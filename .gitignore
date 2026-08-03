@@ -1,0 +1,17 @@
+# Derleme çıktıları
+/bin/
+/dist/
+*.exe
+*.exe~
+*.syso
+*.test
+
+# Go
+vendor/
+*.out
+
+# Editör / OS
+.vscode/
+.idea/
+Thumbs.db
+desktop.ini
