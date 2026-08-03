@@ -5,6 +5,9 @@ package main
 import (
 	"fmt"
 	"os"
+
+	"github.com/guts/antigame/internal/config"
+	"github.com/guts/antigame/internal/gate"
 )
 
 const usage = `antigame — oyun süresi takibi ve MFA kapısı
@@ -25,7 +28,12 @@ func main() {
 	}
 	var err error
 	switch os.Args[1] {
-	// Alt komutlar sirasiyla Gorev 9, 10, 11, 12, 13, 14'te baglanacak.
+	case "gate":
+		app := "Oyun"
+		if len(os.Args) >= 4 && os.Args[2] == "--app" {
+			app = os.Args[3]
+		}
+		err = gate.Run(config.Dir(), app)
 	default:
 		fmt.Fprintf(os.Stderr, "bilinmeyen komut: %s\n\n%s", os.Args[1], usage)
 		os.Exit(2)

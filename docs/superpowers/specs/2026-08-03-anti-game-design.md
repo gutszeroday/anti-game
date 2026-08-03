@@ -75,7 +75,7 @@ Ham Win32 modal diyalog (`user32` çağrıları, GUI kütüphanesi yok). Göster
 
 Kod kabul edilirse oturum açılıyor ve pencere kapanıyor. Kullanıcı oyunu **kendisi** yeniden başlatıyor.
 
-Adlandırılmış mutex (`Global\antigame-gate`) ile aynı anda birden fazla kapı penceresi açılması engelleniyor.
+Adlandırılmış mutex (`Local\antigame-gate`; kapsam tek oturum olduğu için `Global\` ad alanına ve onun getirdiği ek yetki ihtiyacına gerek yok) ile aynı anda birden fazla kapı penceresi açılması engelleniyor.
 
 ### 5.3 Rapor (`report`)
 
