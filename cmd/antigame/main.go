@@ -13,12 +13,15 @@ import (
 	"syscall"
 	"time"
 
+	"golang.org/x/sys/windows"
+
 	"github.com/guts/antigame/internal/config"
 	"github.com/guts/antigame/internal/gamelist"
 	"github.com/guts/antigame/internal/gate"
 	"github.com/guts/antigame/internal/menu"
 	"github.com/guts/antigame/internal/report"
 	"github.com/guts/antigame/internal/setup"
+	"github.com/guts/antigame/internal/single"
 	"github.com/guts/antigame/internal/status"
 	"github.com/guts/antigame/internal/tray"
 	"github.com/guts/antigame/internal/uninstall"
@@ -98,7 +101,7 @@ func menuItems() []menu.Item {
 			}
 			return err
 		}},
-		{Key: "4", Label: "İzleyiciyi şimdi başlat (Ctrl+C ile durur)", Run: func() error {
+		{Key: "4", Label: "İzleyiciyi şimdi başlat (arka planda)", Run: func() error {
 			return runWatch(false)
 		}},
 		{Key: "5", Label: "Kaldır", Run: func() error {
@@ -107,19 +110,57 @@ func menuItems() []menu.Item {
 	}
 }
 
+const watchLock = "antigame-watch"
+
+// spawnWatcher, izleyiciyi ayri ve konsoldan bagimsiz bir process olarak
+// baslatir. Terminalden baslatildiginda pencere kapaninca izleyicinin de
+// olmesi bekleniyordu; artik olmuyor.
+func spawnWatcher() error {
+	if release, ok := single.Acquire(watchLock); ok {
+		release()
+	} else {
+		fmt.Println("İzleyici zaten çalışıyor.")
+		return nil
+	}
+
+	exe, err := os.Executable()
+	if err != nil {
+		return err
+	}
+	cmd := exec.Command(exe, "watch", "--background")
+	// DETACHED_PROCESS: cocuk kendi konsolsuz process'i olur ve ust
+	// process'in penceresi kapaninca etkilenmez.
+	cmd.SysProcAttr = &syscall.SysProcAttr{CreationFlags: windows.DETACHED_PROCESS}
+	if err := cmd.Start(); err != nil {
+		return err
+	}
+	// Beklemiyoruz: amac zaten baglantiyi koparmak.
+	fmt.Printf("İzleyici arka planda başlatıldı (PID %d). Bu pencereyi kapatabilirsiniz.\n",
+		cmd.Process.Pid)
+	return nil
+}
+
 func runWatch(background bool) error {
+	if !background {
+		return spawnWatcher()
+	}
+
+	// Ayni anda iki izleyici gunluge cift kayit yazar ve kapida iki
+	// pencere acar; ikincisi sessizce cikmali.
+	release, ok := single.Acquire(watchLock)
+	if !ok {
+		return nil
+	}
+	defer release()
+
 	// Izleyici cok az ayirma yapar; varsayilan %100 yerine daha sik ve
 	// daha kucuk toplama, kalici bellek tabanini asagi ceker.
 	debug.SetGCPercent(20)
 
-	// Zamanlanmis gorev bu modu kullanir: konsol penceresi ekranda kalmasin
-	// ve kullanici onu kapatinca izleyici olmesin. Menuden baslatilan izleyici
-	// bu yola girmez, kullanicinin kendi penceresinde Ctrl+C ile durur.
-	if background {
-		if err := winproc.DetachConsole(); err != nil {
-			return err
-		}
-	}
+	// Konsol yoksa (DETACHED_PROCESS ile baslatildiysa) bu zaten basarisiz
+	// olur; gorev uzerinden gelindiginde pencereyi kapatir. Iki durumda da
+	// izleyicinin calismasini engellememeli.
+	_ = winproc.DetachConsole()
 
 	dir := config.Dir()
 	cfg, err := config.Load(dir)

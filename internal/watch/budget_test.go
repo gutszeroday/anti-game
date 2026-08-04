@@ -48,7 +48,9 @@ func TestWatcherStaysWithinMemoryBudget(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	cmd := exec.Command(bin, "watch")
+	// --background gercekten calisan moddur; argumansiz "watch" artik
+	// yalnizca ayri bir process baslatip cikar, olculecek bir sey birakmaz.
+	cmd := exec.Command(bin, "watch", "--background")
 	cmd.Env = append(os.Environ(), "LOCALAPPDATA="+dataDir)
 	if err := cmd.Start(); err != nil {
 		t.Fatalf("izleyici baslatilamadi: %v", err)
