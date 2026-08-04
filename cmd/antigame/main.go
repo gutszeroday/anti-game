@@ -11,6 +11,7 @@ import (
 	"syscall"
 
 	"github.com/guts/antigame/internal/config"
+	"github.com/guts/antigame/internal/gamelist"
 	"github.com/guts/antigame/internal/gate"
 	"github.com/guts/antigame/internal/setup"
 	"github.com/guts/antigame/internal/watch"
@@ -46,6 +47,8 @@ func main() {
 		err = runWatch()
 	case "setup":
 		err = setup.Run(config.Dir(), os.Stdin, os.Stdout)
+	case "list":
+		err = gamelist.Run(config.Dir(), os.Args[2:], os.Stdout)
 	default:
 		fmt.Fprintf(os.Stderr, "bilinmeyen komut: %s\n\n%s", os.Args[1], usage)
 		os.Exit(2)
