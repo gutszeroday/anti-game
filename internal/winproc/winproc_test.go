@@ -90,3 +90,16 @@ func TestTrimSucceeds(t *testing.T) {
 		t.Fatalf("Trim: %v", err)
 	}
 }
+
+func TestWorkingSetOfCurrentProcessIsPlausible(t *testing.T) {
+	ws, err := WorkingSet(os.Getpid())
+	if err != nil {
+		t.Fatalf("WorkingSet: %v", err)
+	}
+	if ws == 0 {
+		t.Fatal("calisma kumesi sifir olamaz")
+	}
+	if ws > 2<<30 {
+		t.Errorf("makul olmayan calisma kumesi: %d bayt", ws)
+	}
+}

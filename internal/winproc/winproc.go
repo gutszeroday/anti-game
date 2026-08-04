@@ -12,8 +12,9 @@ import (
 )
 
 var (
-	psapi       = windows.NewLazySystemDLL("psapi.dll")
-	procEmptyWS = psapi.NewProc("EmptyWorkingSet")
+	psapi          = windows.NewLazySystemDLL("psapi.dll")
+	procEmptyWS    = psapi.NewProc("EmptyWorkingSet")
+	procGetMemInfo = psapi.NewProc("GetProcessMemoryInfo")
 )
 
 // Proc, calisan bir process'in izleyici icin gereken minimum bilgisidir.
@@ -93,4 +94,36 @@ func Trim() error {
 		return err
 	}
 	return nil
+}
+
+type processMemoryCounters struct {
+	cb                         uint32
+	PageFaultCount             uint32
+	PeakWorkingSetSize         uintptr
+	WorkingSetSize             uintptr
+	QuotaPeakPagedPoolUsage    uintptr
+	QuotaPagedPoolUsage        uintptr
+	QuotaPeakNonPagedPoolUsage uintptr
+	QuotaNonPagedPoolUsage     uintptr
+	PagefileUsage              uintptr
+	PeakPagefileUsage          uintptr
+}
+
+// WorkingSet, process'in su anda fiziksel bellekte tuttugu bayt sayisini
+// dondurur. Butce testi bu degeri olcer.
+func WorkingSet(pid int) (uint64, error) {
+	h, err := windows.OpenProcess(
+		windows.PROCESS_QUERY_LIMITED_INFORMATION|windows.PROCESS_VM_READ, false, uint32(pid))
+	if err != nil {
+		return 0, err
+	}
+	defer windows.CloseHandle(h)
+
+	var c processMemoryCounters
+	c.cb = uint32(unsafe.Sizeof(c))
+	r, _, err := procGetMemInfo.Call(uintptr(h), uintptr(unsafe.Pointer(&c)), uintptr(c.cb))
+	if r == 0 {
+		return 0, err
+	}
+	return uint64(c.WorkingSetSize), nil
 }

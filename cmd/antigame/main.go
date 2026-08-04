@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"runtime/debug"
 	"syscall"
 
 	"github.com/guts/antigame/internal/config"
@@ -15,6 +16,7 @@ import (
 	"github.com/guts/antigame/internal/gate"
 	"github.com/guts/antigame/internal/report"
 	"github.com/guts/antigame/internal/setup"
+	"github.com/guts/antigame/internal/uninstall"
 	"github.com/guts/antigame/internal/watch"
 	"github.com/guts/antigame/internal/wininput"
 	"github.com/guts/antigame/internal/winproc"
@@ -50,6 +52,8 @@ func main() {
 		err = setup.Run(config.Dir(), os.Stdin, os.Stdout)
 	case "list":
 		err = gamelist.Run(config.Dir(), os.Args[2:], os.Stdout)
+	case "uninstall":
+		err = uninstall.Run(config.Dir(), os.Stdin, os.Stdout)
 	case "report":
 		var path string
 		path, err = report.Run(config.Dir())
@@ -67,6 +71,10 @@ func main() {
 }
 
 func runWatch() error {
+	// Izleyici cok az ayirma yapar; varsayilan %100 yerine daha sik ve
+	// daha kucuk toplama, kalici bellek tabanini asagi ceker.
+	debug.SetGCPercent(20)
+
 	dir := config.Dir()
 	cfg, err := config.Load(dir)
 	if err != nil {
