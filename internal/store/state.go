@@ -11,8 +11,14 @@ import (
 // zamani yoktur; oturum, oyun calistigi surece ve son goruldukten sonraki
 // odemesiz sure boyunca gecerlidir.
 type Session struct {
-	OpenedAt     time.Time `json:"opened_at"`
+	OpenedAt time.Time `json:"opened_at"`
+	// LastGameSeen yalnizca gercek oyunlarla guncellenir. Baslatici
+	// (Riot Client gibi) tek basina oturumu sonsuza kadar tazeleyemesin
+	// diye ayri tutuluyor.
 	LastGameSeen time.Time `json:"last_game_seen"`
+	// LastSeen, baslatici dahil listedeki herhangi bir seyin en son
+	// gorulme anidir.
+	LastSeen time.Time `json:"last_seen"`
 }
 
 type State struct {

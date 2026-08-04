@@ -1,6 +1,10 @@
 package config
 
-import "testing"
+import (
+	"os"
+	"path/filepath"
+	"testing"
+)
 
 func TestDefaultContainsRiotGames(t *testing.T) {
 	c := Default()
@@ -78,5 +82,50 @@ func TestSaveThenLoadRoundTrip(t *testing.T) {
 	}
 	if out.FriendName != "Ahmet" || len(out.Gated) != len(in.Gated) {
 		t.Errorf("gidis-donus bozuk: %+v", out)
+	}
+}
+
+func TestLoadDoesNotInheritDefaultsIntoUserGames(t *testing.T) {
+	// encoding/json dizileri cozerken mevcut slice elemanlarini yeniden
+	// kullanir, sifirlamaz. Varsayilan listenin uzerine cozulurse
+	// kullanicinin oyunu, ayni indeksteki varsayilan girdinin launcher
+	// bayragini miras alir; oyun baslatici sayilir ve oynarken oturum duser.
+	dir := t.TempDir()
+	raw := `{"gated":[{"name":"Palworld","exe":"Palworld.exe"}]}`
+	if err := os.WriteFile(filepath.Join(dir, "config.json"), []byte(raw), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	c, err := Load(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(c.Gated) != 1 {
+		t.Fatalf("liste kullanicinin yazdigi gibi okunmadi: %+v", c.Gated)
+	}
+	if c.Gated[0].Launcher {
+		t.Error("kullanicinin oyunu varsayilandan launcher bayragi miras aldi")
+	}
+	if c.Gated[0].Path != "" {
+		t.Error("kullanicinin oyunu varsayilandan yol miras aldi")
+	}
+}
+
+func TestLoadStillFillsMissingScalarDefaults(t *testing.T) {
+	dir := t.TempDir()
+	raw := `{"gated":[{"name":"X","exe":"x.exe"}]}`
+	os.WriteFile(filepath.Join(dir, "config.json"), []byte(raw), 0o600)
+	c, _ := Load(dir)
+	if c.GraceMinutes == 0 || c.PollMS == 0 || c.FocusSampleS == 0 ||
+		c.IdleThresholdS == 0 || c.LauncherWindowMinutes == 0 {
+		t.Errorf("eksik sayisal ayarlar varsayilanla doldurulmadi: %+v", c)
+	}
+}
+
+func TestLoadKeepsIntentionallyEmptyList(t *testing.T) {
+	dir := t.TempDir()
+	os.WriteFile(filepath.Join(dir, "config.json"), []byte(`{"gated":[]}`), 0o600)
+	c, _ := Load(dir)
+	if len(c.Gated) != 0 {
+		t.Errorf("bilerek bosaltilan liste varsayilanla dolduruldu: %+v", c.Gated)
 	}
 }

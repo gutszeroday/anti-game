@@ -294,6 +294,82 @@ func TestWatchStartEventWrittenOnceOnFirstStep(t *testing.T) {
 	}
 }
 
+func TestLauncherLeftOpenEventuallyRelocksGate(t *testing.T) {
+	// Riot Client tepside acik unutulunca oturum sonsuza kadar
+	// tazeleniyordu: sabah alinan kodla gun boyu girip cikilabiliyordu.
+	f := &fakes{procs: []winproc.Proc{{PID: 7, Exe: "RiotClient.exe"}}}
+	w, dir := newWatcher(t, f)
+	w.o.Cfg.Gated = []config.Game{
+		{Name: "Riot Client", Exe: "RiotClient.exe", Launcher: true},
+		{Name: "Valorant", Exe: "VALORANT.exe"},
+	}
+	w.launcherWindow = 45 * time.Minute
+
+	st, _ := store.LoadState(dir)
+	session.Open(st, t0)
+	store.SaveState(dir, st)
+	w.Reload()
+
+	// Once gercek oyun oynaniyor.
+	f.procs = []winproc.Proc{{PID: 7, Exe: "RiotClient.exe"}, {PID: 42, Exe: "VALORANT.exe"}}
+	if err := w.Step(t0); err != nil {
+		t.Fatal(err)
+	}
+
+	// Oyun kapaniyor, yalnizca istemci acik kaliyor.
+	f.procs = []winproc.Proc{{PID: 7, Exe: "RiotClient.exe"}}
+	for i := 1; i <= 40; i++ {
+		if err := w.Step(t0.Add(time.Duration(i) * time.Minute)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if len(f.killed) != 0 {
+		t.Fatalf("baslatici penceresi dolmadan istemci oldurüldu: %v", f.killed)
+	}
+
+	// Pencere dolduktan sonra oturum dusmeli ve istemci kapida durmali.
+	if err := w.Step(t0.Add(50 * time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	if len(f.killed) == 0 {
+		t.Error("baslatici penceresi dolduktan sonra oturum dusmedi")
+	}
+}
+
+func TestLauncherKeepsSessionAliveBetweenMatches(t *testing.T) {
+	// Mac arasinda yalnizca istemci calisir; oturum burada dusmemeli,
+	// yoksa yeni mac yuklenirken oyun oldurulur.
+	f := &fakes{procs: []winproc.Proc{{PID: 7, Exe: "RiotClient.exe"}}}
+	w, dir := newWatcher(t, f)
+	w.o.Cfg.Gated = []config.Game{
+		{Name: "Riot Client", Exe: "RiotClient.exe", Launcher: true},
+		{Name: "Valorant", Exe: "VALORANT.exe"},
+	}
+	w.launcherWindow = 45 * time.Minute
+
+	st, _ := store.LoadState(dir)
+	session.Open(st, t0)
+	store.SaveState(dir, st)
+	w.Reload()
+
+	f.procs = []winproc.Proc{{PID: 7, Exe: "RiotClient.exe"}, {PID: 42, Exe: "VALORANT.exe"}}
+	w.Step(t0)
+
+	f.procs = []winproc.Proc{{PID: 7, Exe: "RiotClient.exe"}}
+	for i := 1; i <= 25; i++ {
+		w.Step(t0.Add(time.Duration(i) * time.Minute))
+	}
+
+	// 25 dakika sonra yeni mac basliyor.
+	f.procs = []winproc.Proc{{PID: 7, Exe: "RiotClient.exe"}, {PID: 43, Exe: "VALORANT.exe"}}
+	if err := w.Step(t0.Add(26 * time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	if len(f.killed) != 0 {
+		t.Errorf("mac arasindan sonra baslayan oyun oldurüldu: %v", f.killed)
+	}
+}
+
 func TestHeartbeatEventWrittenEveryTenMinutes(t *testing.T) {
 	f := &fakes{}
 	w, dir := newWatcher(t, f)

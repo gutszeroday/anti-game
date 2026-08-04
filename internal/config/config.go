@@ -14,16 +14,28 @@ type Game struct {
 	Name string `json:"name"`
 	Exe  string `json:"exe"`
 	Path string `json:"path,omitempty"`
+	// Launcher, bu girdinin oyunun kendisi degil baslatici oldugunu
+	// soyler. Baslatici da kapida durdurulur, ama tek basina calisirken
+	// oturumu sonsuza kadar tazeleyemez: tepside acik unutulan bir
+	// istemci gun boyu kod sorulmamasina yol aciyordu.
+	Launcher bool `json:"launcher,omitempty"`
 }
 
 type Config struct {
-	FriendName     string `json:"friend_name"`
-	FriendHint     string `json:"friend_hint"`
-	Gated          []Game `json:"gated"`
-	GraceMinutes   int    `json:"grace_minutes"`
-	PollMS         int    `json:"poll_ms"`
-	FocusSampleS   int    `json:"focus_sample_s"`
-	IdleThresholdS int    `json:"idle_threshold_s"`
+	FriendName string `json:"friend_name"`
+	FriendHint string `json:"friend_hint"`
+	Gated      []Game `json:"gated"`
+	// GraceMinutes, listedeki hicbir sey calismadiginda oturumun ne kadar
+	// daha acik kalacagidir.
+	GraceMinutes int `json:"grace_minutes"`
+	// LauncherWindowMinutes, son gercek oyundan sonra yalnizca baslatici
+	// calisirken oturumun en fazla ne kadar yasayacagidir. Mac arasini
+	// kapsayacak kadar uzun, gece boyu acik unutulan istemciyi
+	// kapsamayacak kadar kisa olmali.
+	LauncherWindowMinutes int `json:"launcher_window_minutes"`
+	PollMS                int `json:"poll_ms"`
+	FocusSampleS          int `json:"focus_sample_s"`
+	IdleThresholdS        int `json:"idle_threshold_s"`
 }
 
 const fileName = "config.json"
@@ -36,35 +48,66 @@ func Dir() string {
 func Default() *Config {
 	return &Config{
 		Gated: []Game{
-			{Name: "Riot Client", Exe: "RiotClientServices.exe"},
-			{Name: "League of Legends", Exe: "LeagueClient.exe"},
+			{Name: "Riot Client", Exe: "RiotClientServices.exe", Launcher: true},
+			{Name: "League of Legends", Exe: "LeagueClient.exe", Launcher: true},
 			{Name: "League of Legends (Oyun)", Exe: "League of Legends.exe"},
-			{Name: "Valorant Başlatıcı", Exe: "VALORANT.exe"},
+			{Name: "Valorant Başlatıcı", Exe: "VALORANT.exe", Launcher: true},
 			{Name: "Valorant", Exe: "VALORANT-Win64-Shipping.exe"},
 			{Name: "Legends of Runeterra", Exe: "LoR.exe"},
 		},
-		GraceMinutes:   10,
-		PollMS:         250,
-		FocusSampleS:   5,
-		IdleThresholdS: 300,
+		GraceMinutes:          10,
+		LauncherWindowMinutes: 45,
+		PollMS:                250,
+		FocusSampleS:          5,
+		IdleThresholdS:        300,
 	}
 }
 
 // Load, config.json'u okur. Dosya yoksa varsayilan yapilandirmayi dondurur
 // ve hata uretmez; ilk calistirmada kurulum gerekmemesi icin boyle.
+//
+// Cozme bos bir yapiya yapiliyor, varsayilanin uzerine degil:
+// encoding/json dizileri cozerken mevcut slice elemanlarini yeniden
+// kullanir ve JSON'da bulunmayan alanlari oldugu gibi birakir. Varsayilan
+// listenin uzerine cozulurse kullanicinin oyunu, ayni indeksteki
+// varsayilan girdinin launcher bayragini miras alir; baslatici sayilan bir
+// oyun oturumu tazelemedigi icin oynarken oturum duser ve oyun kapatilir.
 func Load(dir string) (*Config, error) {
+	d := Default()
 	b, err := os.ReadFile(filepath.Join(dir, fileName))
 	if os.IsNotExist(err) {
-		return Default(), nil
+		return d, nil
 	}
 	if err != nil {
 		return nil, err
 	}
-	c := Default()
-	if err := json.Unmarshal(b, c); err != nil {
+	var c Config
+	if err := json.Unmarshal(b, &c); err != nil {
 		return nil, err
 	}
-	return c, nil
+
+	// Dosyada bulunmayan ayarlar varsayilandan tamamlanir. Bilerek
+	// bosaltilmis liste ("gated": []) korunur; yalnizca hic yazilmamis
+	// olan (null) varsayilana doner.
+	if c.Gated == nil {
+		c.Gated = d.Gated
+	}
+	if c.GraceMinutes <= 0 {
+		c.GraceMinutes = d.GraceMinutes
+	}
+	if c.LauncherWindowMinutes <= 0 {
+		c.LauncherWindowMinutes = d.LauncherWindowMinutes
+	}
+	if c.PollMS <= 0 {
+		c.PollMS = d.PollMS
+	}
+	if c.FocusSampleS <= 0 {
+		c.FocusSampleS = d.FocusSampleS
+	}
+	if c.IdleThresholdS <= 0 {
+		c.IdleThresholdS = d.IdleThresholdS
+	}
+	return &c, nil
 }
 
 func Save(dir string, c *Config) error {

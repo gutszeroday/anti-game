@@ -49,9 +49,10 @@ type tracked struct {
 }
 
 type Watcher struct {
-	o      Options
-	grace  time.Duration
-	pinned map[string]bool // yol sabitlemesi olan exe adlari
+	o              Options
+	grace          time.Duration
+	launcherWindow time.Duration
+	pinned         map[string]bool // yol sabitlemesi olan exe adlari
 
 	st      *store.State
 	running map[int]*tracked
@@ -82,12 +83,19 @@ func New(o Options) (*Watcher, error) {
 	if err != nil {
 		return nil, err
 	}
+	// Eski config.json'da bu alan yok; sifir birakilirsa oturum hic
+	// acilamazdi.
+	launcherWindow := time.Duration(o.Cfg.LauncherWindowMinutes) * time.Minute
+	if launcherWindow <= 0 {
+		launcherWindow = 45 * time.Minute
+	}
 	return &Watcher{
-		o:       o,
-		grace:   time.Duration(o.Cfg.GraceMinutes) * time.Minute,
-		pinned:  pinned,
-		st:      st,
-		running: make(map[int]*tracked),
+		o:              o,
+		grace:          time.Duration(o.Cfg.GraceMinutes) * time.Minute,
+		launcherWindow: launcherWindow,
+		pinned:         pinned,
+		st:             st,
+		running:        make(map[int]*tracked),
 	}, nil
 }
 
@@ -119,13 +127,13 @@ func (w *Watcher) Step(now time.Time) error {
 
 	// Kapi baska bir process'te oturum acmis olabilir; oturum kapaliyken
 	// her turda diski okumak yerine yalnizca gerektiginde okuruz.
-	if !session.Active(w.st, now, w.grace) {
+	if !session.Active(w.st, now, w.grace, w.launcherWindow) {
 		if err := w.Reload(); err != nil {
 			return err
 		}
 	}
 
-	active := session.Active(w.st, now, w.grace)
+	active := session.Active(w.st, now, w.grace, w.launcherWindow)
 	seen := make(map[int]bool, len(w.running))
 	byPID := make(map[int]string, len(procs))
 
@@ -157,7 +165,8 @@ func (w *Watcher) Step(now time.Time) error {
 				return err
 			}
 		}
-		session.Touch(w.st, now)
+		// Baslatici oturumu tazeler ama baslatici penceresini uzatmaz.
+		session.Touch(w.st, now, !g.Launcher)
 	}
 
 	if err := w.reapExited(now, seen); err != nil {

@@ -10,6 +10,7 @@ import (
 	"os/signal"
 	"runtime/debug"
 	"slices"
+	"strings"
 	"syscall"
 	"time"
 
@@ -85,6 +86,27 @@ func main() {
 	}
 }
 
+// runningExes, oyun eklerken secenek olarak sunulacak program adlaridir.
+// Kullanicinin exe adini bilmesi gerekmesin diye calisan process'lerden
+// turetiliyor; tekrarlar ayiklaniyor.
+func runningExes() []string {
+	procs, err := winproc.List()
+	if err != nil {
+		return nil
+	}
+	seen := make(map[string]bool, len(procs))
+	var out []string
+	for _, p := range procs {
+		key := strings.ToLower(p.Exe)
+		if p.Exe == "" || seen[key] {
+			continue
+		}
+		seen[key] = true
+		out = append(out, p.Exe)
+	}
+	return out
+}
+
 func menuItems() []menu.Item {
 	dir := config.Dir()
 	return []menu.Item{
@@ -93,6 +115,12 @@ func menuItems() []menu.Item {
 		}},
 		{Key: "2", Label: "Oyun listesini göster", Run: func() error {
 			return gamelist.Run(dir, nil, os.Stdout)
+		}},
+		{Key: "6", Label: "Oyun ekle", Run: func() error {
+			return gamelist.AddInteractive(dir, os.Stdin, os.Stdout, runningExes())
+		}},
+		{Key: "7", Label: "Oyun çıkar", Run: func() error {
+			return gamelist.RemoveInteractive(dir, os.Stdin, os.Stdout)
 		}},
 		{Key: "3", Label: "Haftalık raporu aç", Run: func() error {
 			path, err := report.Run(dir)

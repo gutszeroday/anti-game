@@ -24,10 +24,18 @@ func Text(dir string, now time.Time) (string, error) {
 	}
 
 	grace := time.Duration(cfg.GraceMinutes) * time.Minute
+	launcherWindow := time.Duration(cfg.LauncherWindowMinutes) * time.Minute
+	if launcherWindow <= 0 {
+		launcherWindow = 45 * time.Minute
+	}
 	var b strings.Builder
 
-	if session.Active(st, now, grace) {
-		left := st.Session.LastGameSeen.Add(grace).Sub(now)
+	if session.Active(st, now, grace, launcherWindow) {
+		// Iki sinirdan hangisi once doluyorsa oturum onda biter.
+		left := min(
+			st.Session.LastSeen.Add(grace).Sub(now),
+			st.Session.LastGameSeen.Add(launcherWindow).Sub(now),
+		)
 		fmt.Fprintf(&b, "Oturum: açık\nOyun kapalıyken %d dakika sonra düşer.\n",
 			int(left.Round(time.Minute).Minutes()))
 	} else {
