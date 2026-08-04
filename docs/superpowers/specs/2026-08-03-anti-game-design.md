@@ -160,6 +160,22 @@ Base32 TOTP secret'ının `CryptProtectData` (kullanıcı kapsamı) ile şifrele
 5. Tek kullanımlık kurtarma kodu üretiliyor, ekranda gösteriliyor, tuzlanmış SHA-256 özeti `state.json`'a yazılıyor. Kullanıcıya bunu **ikinci bir kişiye** vermesi söyleniyor.
 6. Oturum açılışına bağlı zamanlanmış görev kuruluyor.
 
+#### 7.1.1 Uzaktaki arkadaş: manuel anahtar
+
+Arkadaş fiziksel olarak yanınızda değilse QR okutamıyor. Bu durumda kod isteminde
+`anahtar` yazılıyor; sihirbaz secret'ı base32 olarak, 4'erli gruplar hâlinde
+**terminale** basıyor (`GEZD GNBV GY3T QOJQ …`). Kesintisiz base32 dizgesi hiçbir
+yerde oluşmuyor; authenticator uygulamaları boşlukları yok sayıyor. Anahtar
+eşleştirme sayfasında görünmüyor — sayfa anahtarsız kalmaya devam ediyor.
+
+Açığa çıkarma tarayıcıda değil terminalde yapılıyor çünkü sayfadan sihirbaza geri
+kanal yok; terminalde olunca eylem `pairing_manual` olayı olarak günlüğe yazılabiliyor.
+
+Bu, §3'teki tehdit modelini zayıflatıyor: anahtar sizin cihazınızdan geçiyor ve
+görebiliyorsunuz. Sunucusuz çevrimdışı TOTP'de bunun teknik çaresi yok. Hedef
+engellemek değil, açığa çıkarmayı kaza eseri değil **bilinçli ve kayıtlı** bir
+eylem hâline getirmek.
+
 ### 7.2 Doğrulama
 
 RFC 6238: HMAC-SHA-1, 6 hane, 30 saniyelik adım, **±1 adım** tolerans.

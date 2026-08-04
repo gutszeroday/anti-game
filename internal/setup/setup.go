@@ -38,8 +38,23 @@ func NewSecret() ([]byte, error) {
 	return s, nil
 }
 
+func encodeKey(secret []byte) string {
+	return base32.StdEncoding.WithPadding(base32.NoPadding).EncodeToString(secret)
+}
+
+// GroupKey, anahtari 4'erli gruplara ayirir. Telefonla dikte etmeyi
+// kolaylastiriyor ve kesintisiz base32 dizgesinin hicbir yerde olusmamasini
+// sagliyor; authenticator uygulamalari bosluklari yok sayar.
+func GroupKey(b32 string) string {
+	var parts []string
+	for i := 0; i < len(b32); i += 4 {
+		parts = append(parts, b32[i:min(i+4, len(b32))])
+	}
+	return strings.Join(parts, " ")
+}
+
 func OTPAuthURI(secret []byte, account string) string {
-	b32 := base32.StdEncoding.WithPadding(base32.NoPadding).EncodeToString(secret)
+	b32 := encodeKey(secret)
 	q := url.Values{}
 	q.Set("secret", b32)
 	q.Set("issuer", "anti-game")
@@ -68,8 +83,42 @@ strong{color:#fff}
 <p>Google Authenticator veya benzeri bir uygulamada <strong>QR kodu tara</strong>
 seçeneğiyle okutun. Okuttuktan sonra bu pencereyi kapatın ve
 uygulamada görünen <strong>6 haneli kodu</strong> kuruluma girin.</p>
+<p>Arkadaşınız uzaktaysa ve QR okutamıyorsa, kurulum penceresine
+<strong>anahtar</strong> yazın; anahtar orada gösterilir.</p>
 <p>Bu sayfa kurulum bitince silinir.</p>
 </div></body></html>`
+}
+
+// readCode, dogrulama kodunu okur. Kullanici kod yerine "anahtar" yazarsa
+// secret'i gruplanmis halde basar, onReveal ile eylemi kaydeder ve kodu
+// istemeye devam eder.
+//
+// Aciga cikarma tarayicidaki sayfada degil burada yapiliyor: sayfadan
+// sihirbaza geri kanal yok, dolayisiyla orada gosterilse kaydedilemezdi.
+func readCode(r *bufio.Reader, out io.Writer, b32 string, onReveal func() error) (string, error) {
+	for {
+		fmt.Fprint(out, `Uygulamada görünen 6 haneli kodu girin (arkadaşınız uzaktaysa "anahtar" yazın): `)
+		s, err := r.ReadString('\n')
+		s = strings.TrimSpace(s)
+		if err != nil && s == "" {
+			return "", err
+		}
+		if !strings.EqualFold(s, "anahtar") {
+			return s, nil
+		}
+		fmt.Fprintf(out, `
+DİKKAT: Bu anahtarı gören herkes kapıyı açabilir. Arkadaşınıza iletin,
+kendinizde saklamayın. Bu adım kayda geçiyor.
+
+Anahtar: %s
+
+`, GroupKey(b32))
+		if onReveal != nil {
+			if err := onReveal(); err != nil {
+				return "", err
+			}
+		}
+	}
 }
 
 // Run, etkilesimli kurulum sihirbazidir.
@@ -121,7 +170,9 @@ func Run(dir string, in io.Reader, out io.Writer) error {
 	}
 
 	fmt.Fprintln(out, "\nQR kod tarayıcıda açıldı. Arkadaşınız okutsun.")
-	code, err := ask("Uygulamada görünen 6 haneli kodu girin: ")
+	code, err := readCode(r, out, encodeKey(secret), func() error {
+		return store.Append(dir, store.Event{TS: time.Now().UTC(), Ev: "pairing_manual"})
+	})
 	if err != nil {
 		return err
 	}
