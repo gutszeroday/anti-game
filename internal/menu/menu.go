@@ -18,10 +18,17 @@ type Item struct {
 
 // Run, secim yapilana kadar menuyu cizer. Eylem hatalari ekrana yazilir
 // ama donguyu bitirmez: pencere kapaninca kullanici hatayi okuyamaz.
-func Run(in io.Reader, out io.Writer, items []Item) error {
+//
+// header her cizimde yeniden cagrilir; menuyu acik birakan kullanici
+// durumun degistigini gorebilsin diye.
+func Run(in io.Reader, out io.Writer, header func() string, items []Item) error {
 	r := bufio.NewReader(in)
 	for {
 		fmt.Fprintln(out, "\nantigame — oyun süresi takibi ve MFA kapısı")
+		if header != nil {
+			fmt.Fprintln(out)
+			fmt.Fprint(out, header())
+		}
 		fmt.Fprintln(out)
 		for _, it := range items {
 			fmt.Fprintf(out, "  %s) %s\n", it.Key, it.Label)

@@ -22,16 +22,31 @@ import (
 
 // Active, su anda gecerli bir kilit oturumu olup olmadigini soyler.
 func Active(st *store.State, now time.Time, grace, launcherWindow time.Duration) bool {
+	return Remaining(st, now, grace, launcherWindow) > 0
+}
+
+// Remaining, oturumun dusmesine kalan sureyi dondurur. Oturum kapaliysa
+// sifir doner. Iki sinirdan hangisi once doluyorsa o gecerlidir.
+//
+// Kalan sure Active ile ayni yerden hesaplaniyor: ayri hesaplaninca
+// eski bicimli state.json'da anlamsiz sayilar uretiliyordu.
+func Remaining(st *store.State, now time.Time, grace, launcherWindow time.Duration) time.Duration {
 	if st.Session == nil {
-		return false
+		return 0
 	}
 	// LastSeen bu alan eklenmeden once yazilmis state.json'larda bostur.
 	lastSeen := st.Session.LastSeen
 	if lastSeen.IsZero() {
 		lastSeen = st.Session.LastGameSeen
 	}
-	return now.Before(lastSeen.Add(grace)) &&
-		now.Before(st.Session.LastGameSeen.Add(launcherWindow))
+	left := min(
+		lastSeen.Add(grace).Sub(now),
+		st.Session.LastGameSeen.Add(launcherWindow).Sub(now),
+	)
+	if left < 0 {
+		return 0
+	}
+	return left
 }
 
 // Open, gecerli kod girildiginde yeni bir oturum acar.

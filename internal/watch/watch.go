@@ -38,6 +38,9 @@ type Options struct {
 	Idle          func() (int, error)
 	ForegroundPID func() (int, error)
 	SpawnGate     func(appName string) error
+	// SecretReady, MFA eslestirmesinin yapilip yapilmadigini soyler. Nil
+	// birakilirsa yapilmis sayilir.
+	SecretReady func() bool
 }
 
 // tracked, calismakta olan bir kapidaki oyunun sayaclaridir.
@@ -54,9 +57,10 @@ type Watcher struct {
 	launcherWindow time.Duration
 	pinned         map[string]bool // yol sabitlemesi olan exe adlari
 
-	st      *store.State
-	running map[int]*tracked
-	started bool
+	st             *store.State
+	running        map[int]*tracked
+	started        bool
+	warnedNoSecret bool
 
 	lastSample    time.Time
 	lastHeartbeat time.Time
@@ -133,7 +137,19 @@ func (w *Watcher) Step(now time.Time) error {
 		}
 	}
 
-	active := session.Active(w.st, now, w.grace, w.launcherWindow)
+	// Eslestirme yoksa kapi penceresi acilamaz. Oyunu yine de oldurmek
+	// kullaniciyi kod girecek yeri olmadan tamamen kilitlerdi; bu yuzden
+	// kapi devre disi kaliyor, sure tutulmaya devam ediyor ve durum bir
+	// kez gunluge yaziliyor.
+	gating := w.o.SecretReady == nil || w.o.SecretReady()
+	if !gating && !w.warnedNoSecret {
+		w.warnedNoSecret = true
+		if err := store.Append(w.o.Dir, store.Event{TS: now, Ev: "gate_disabled"}); err != nil {
+			return err
+		}
+	}
+
+	active := !gating || session.Active(w.st, now, w.grace, w.launcherWindow)
 	seen := make(map[int]bool, len(w.running))
 	byPID := make(map[int]string, len(procs))
 

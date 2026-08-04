@@ -70,6 +70,23 @@ func TestShowsGatedGameCount(t *testing.T) {
 	}
 }
 
+func TestOldStateWithoutLastSeenShowsSaneRemaining(t *testing.T) {
+	// last_seen alani eklenmeden once yazilmis state.json'da kalan sure
+	// ham alandan hesaplaninca -153722867 dakika gibi sayilar cikiyordu.
+	s := withState(t, func(st *store.State) {
+		st.Session = &store.Session{
+			OpenedAt:     t0.Add(-4 * time.Minute),
+			LastGameSeen: t0.Add(-4 * time.Minute),
+		}
+	})
+	if strings.Contains(s, "-") {
+		t.Errorf("kalan sure negatif cikti:\n%s", s)
+	}
+	if !strings.Contains(s, "6 dakika") {
+		t.Errorf("kalan sure eski bicimli oturumda yanlis:\n%s", s)
+	}
+}
+
 func TestMissingDataDirIsNotAnError(t *testing.T) {
 	// Kurulum yapilmamis makinede tepsi menusu yine acilabilmeli.
 	if _, err := Text(t.TempDir(), t0); err != nil {

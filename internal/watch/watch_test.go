@@ -294,6 +294,61 @@ func TestWatchStartEventWrittenOnceOnFirstStep(t *testing.T) {
 	}
 }
 
+func TestDoesNotBlockWhenPairingIsMissing(t *testing.T) {
+	// Kurulum yapilmadan izleyici calisirsa oyun oldurulur ama kapi
+	// penceresi secret olmadigi icin acilamaz: kullanici oyunlardan
+	// tamamen kilitlenir ve kod girecek yer kalmaz.
+	f := &fakes{procs: []winproc.Proc{{PID: 42, Exe: "VALORANT.exe"}}}
+	w, dir := newWatcher(t, f)
+	w.o.SecretReady = func() bool { return false }
+
+	if err := w.Step(t0); err != nil {
+		t.Fatal(err)
+	}
+	if len(f.killed) != 0 {
+		t.Fatalf("eslestirme yokken oyun oldurüldu: %v", f.killed)
+	}
+	if len(f.gateCalls) != 0 {
+		t.Errorf("acilamayacak kapi penceresi istendi: %v", f.gateCalls)
+	}
+	if !hasEvent(events(t, dir), "gate_disabled", "") {
+		t.Error("kapinin devre disi oldugu gunluge yazilmadi")
+	}
+}
+
+func TestPairingMissingWarningWrittenOnce(t *testing.T) {
+	f := &fakes{procs: []winproc.Proc{{PID: 42, Exe: "VALORANT.exe"}}}
+	w, dir := newWatcher(t, f)
+	w.o.SecretReady = func() bool { return false }
+
+	for i := range 20 {
+		w.Step(t0.Add(time.Duration(i) * time.Minute))
+	}
+	var n int
+	for _, e := range events(t, dir) {
+		if e.Ev == "gate_disabled" {
+			n++
+		}
+	}
+	if n != 1 {
+		t.Errorf("uyari %d kez yazildi, 1 bekleniyordu", n)
+	}
+}
+
+func TestStillTracksTimeWhenPairingIsMissing(t *testing.T) {
+	f := &fakes{procs: []winproc.Proc{{PID: 42, Exe: "VALORANT.exe"}}}
+	w, dir := newWatcher(t, f)
+	w.o.SecretReady = func() bool { return false }
+
+	w.Step(t0)
+	f.procs = nil
+	w.Step(t0.Add(30 * time.Minute))
+
+	if !hasEvent(events(t, dir), "game_end", "VALORANT.exe") {
+		t.Error("eslestirme yokken sure hic kaydedilmedi")
+	}
+}
+
 func TestLauncherLeftOpenEventuallyRelocksGate(t *testing.T) {
 	// Riot Client tepside acik unutulunca oturum sonsuza kadar
 	// tazeleniyordu: sabah alinan kodla gun boyu girip cikilabiliyordu.

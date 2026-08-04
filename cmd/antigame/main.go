@@ -24,8 +24,10 @@ import (
 	"github.com/guts/antigame/internal/setup"
 	"github.com/guts/antigame/internal/single"
 	"github.com/guts/antigame/internal/status"
+	"github.com/guts/antigame/internal/task"
 	"github.com/guts/antigame/internal/tray"
 	"github.com/guts/antigame/internal/uninstall"
+	"github.com/guts/antigame/internal/vault"
 	"github.com/guts/antigame/internal/watch"
 	"github.com/guts/antigame/internal/wininput"
 	"github.com/guts/antigame/internal/winproc"
@@ -39,6 +41,7 @@ Kullanım:
   antigame gate --app <ad>    Kod giriş penceresi
   antigame list               Oyun listesini görüntüle / düzenle
   antigame report             Haftalık raporu tarayıcıda aç
+  antigame autostart          Başlangıca ekle / çıkar
   antigame uninstall          Kodla doğrulayıp kaldır
 
 Argümansız çalıştırıldığında (ör. çift tıklayarak) menü açılır.
@@ -48,7 +51,7 @@ func main() {
 	// Cift tiklayan kullanici icin menu: argumansiz calistirildiginda
 	// kullanim metnini yazip kapanmak, ekranda hicbir sey gostermiyordu.
 	if len(os.Args) < 2 {
-		if err := menu.Run(os.Stdin, os.Stdout, menuItems()); err != nil {
+		if err := menu.Run(os.Stdin, os.Stdout, menuHeader, menuItems()); err != nil {
 			fmt.Fprintf(os.Stderr, "hata: %v\n", err)
 			os.Exit(1)
 		}
@@ -70,6 +73,8 @@ func main() {
 		err = gamelist.Run(config.Dir(), os.Args[2:], os.Stdout)
 	case "uninstall":
 		err = uninstall.Run(config.Dir(), os.Stdin, os.Stdout)
+	case "autostart":
+		err = toggleAutostart()
 	case "report":
 		var path string
 		path, err = report.Run(config.Dir())
@@ -84,6 +89,46 @@ func main() {
 		fmt.Fprintf(os.Stderr, "hata: %v\n", err)
 		os.Exit(1)
 	}
+}
+
+// watcherRunning, izleyicinin ayakta olup olmadigini kilidi deneyerek
+// anlar: kilit alinabiliyorsa calisan bir izleyici yok.
+func watcherRunning() bool {
+	release, ok := single.Acquire(watchLock)
+	if ok {
+		release()
+		return false
+	}
+	return true
+}
+
+// menuHeader, menunun ustunde o anki durumu gosterir. Her cizimde
+// yeniden okunur; menuyu acik birakan kullanici degisiklikleri gorur.
+func menuHeader() string {
+	dir := config.Dir()
+	var b strings.Builder
+
+	if watcherRunning() {
+		b.WriteString("İzleyici: çalışıyor\n")
+	} else {
+		b.WriteString("İzleyici: durdu — 4 ile başlatabilirsiniz\n")
+	}
+
+	if _, err := vault.Load(dir); err != nil {
+		b.WriteString("MFA: kurulmadı — kapı devre dışı, yalnızca süre kaydediliyor\n")
+		return b.String()
+	}
+	if installed, _ := task.Installed(); installed {
+		b.WriteString("Başlangıç: kayıtlı (oturum açılışında başlar)\n")
+	} else {
+		b.WriteString("Başlangıç: kayıtlı değil — 7 ile ekleyebilirsiniz\n")
+	}
+	s, err := status.Text(dir, time.Now().UTC())
+	if err != nil {
+		return b.String()
+	}
+	b.WriteString(s)
+	return b.String()
 }
 
 // runningExes, oyun eklerken secenek olarak sunulacak program adlaridir.
@@ -116,12 +161,6 @@ func menuItems() []menu.Item {
 		{Key: "2", Label: "Oyun listesini göster", Run: func() error {
 			return gamelist.Run(dir, nil, os.Stdout)
 		}},
-		{Key: "6", Label: "Oyun ekle", Run: func() error {
-			return gamelist.AddInteractive(dir, os.Stdin, os.Stdout, runningExes())
-		}},
-		{Key: "7", Label: "Oyun çıkar", Run: func() error {
-			return gamelist.RemoveInteractive(dir, os.Stdin, os.Stdout)
-		}},
 		{Key: "3", Label: "Haftalık raporu aç", Run: func() error {
 			path, err := report.Run(dir)
 			if err == nil {
@@ -132,13 +171,50 @@ func menuItems() []menu.Item {
 		{Key: "4", Label: "İzleyiciyi şimdi başlat (arka planda)", Run: func() error {
 			return runWatch(false)
 		}},
-		{Key: "5", Label: "Kaldır", Run: func() error {
+		{Key: "5", Label: "Oyun ekle", Run: func() error {
+			return gamelist.AddInteractive(dir, os.Stdin, os.Stdout, runningExes())
+		}},
+		{Key: "6", Label: "Oyun çıkar", Run: func() error {
+			return gamelist.RemoveInteractive(dir, os.Stdin, os.Stdout)
+		}},
+		{Key: "7", Label: "Başlangıca ekle / çıkar", Run: toggleAutostart},
+		{Key: "8", Label: "Kaldır", Run: func() error {
 			return uninstall.Run(dir, os.Stdin, os.Stdout)
 		}},
 	}
 }
 
 const watchLock = "antigame-watch"
+
+// toggleAutostart, oturum acilisinda baslatan zamanlanmis gorevi kurar
+// veya kaldirir. Kurulum sihirbazi bunu zaten yapiyor; buradaki secenek
+// gorevi sonradan kaldirip geri eklemek icin.
+func toggleAutostart() error {
+	installed, err := task.Installed()
+	if err != nil {
+		return err
+	}
+	if installed {
+		if err := task.Remove(); err != nil {
+			return err
+		}
+		fmt.Println("Başlangıçtan çıkarıldı. İzleyici oturum açılışında başlamayacak.")
+		return nil
+	}
+	exe, err := os.Executable()
+	if err != nil {
+		return err
+	}
+	if err := task.Install(exe); err != nil {
+		return err
+	}
+	fmt.Printf("Başlangıca eklendi: %s\n", exe)
+	if _, err := vault.Load(config.Dir()); err != nil {
+		fmt.Println("Uyarı: MFA kurulumu yapılmadığı için kapı devre dışı;" +
+			" izleyici yalnızca süre kaydeder. Kurulumu 1 ile tamamlayın.")
+	}
+	return nil
+}
 
 // spawnWatcher, izleyiciyi ayri ve konsoldan bagimsiz bir process olarak
 // baslatir. Terminalden baslatildiginda pencere kapaninca izleyicinin de
@@ -216,6 +292,12 @@ func runWatch(background bool) error {
 		ForegroundPID: wininput.ForegroundPID,
 		SpawnGate: func(app string) error {
 			return exec.Command(exe, "gate", "--app", app).Start()
+		},
+		// Eslestirme yoksa kapi acilamaz; izleyici oyunu oldurup
+		// kullaniciyi kod girecek yeri olmadan kilitlememeli.
+		SecretReady: func() bool {
+			_, err := vault.Load(dir)
+			return err == nil
 		},
 	})
 	if err != nil {

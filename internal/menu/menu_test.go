@@ -3,17 +3,43 @@ package menu
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 )
 
 func drive(t *testing.T, input string, items []Item) string {
 	t.Helper()
+	return driveHeader(t, input, nil, items)
+}
+
+func driveHeader(t *testing.T, input string, header func() string, items []Item) string {
+	t.Helper()
 	var out bytes.Buffer
-	if err := Run(strings.NewReader(input), &out, items); err != nil {
+	if err := Run(strings.NewReader(input), &out, header, items); err != nil {
 		t.Fatalf("Run: %v", err)
 	}
 	return out.String()
+}
+
+func TestHeaderShownAboveMenu(t *testing.T) {
+	out := driveHeader(t, "0\n", func() string { return "Oturum: kapalı" }, nil)
+	if !strings.Contains(out, "Oturum: kapalı") {
+		t.Errorf("durum basligi gosterilmedi:\n%s", out)
+	}
+}
+
+func TestHeaderRefreshedOnEveryRedraw(t *testing.T) {
+	// Kullanici menuyu acik birakip durumun degistigini gormek istiyor.
+	n := 0
+	out := driveHeader(t, "1\n0\n", func() string {
+		n++
+		return fmt.Sprintf("okuma %d", n)
+	}, []Item{{Key: "1", Label: "Bir", Run: func() error { return nil }}})
+
+	if !strings.Contains(out, "okuma 1") || !strings.Contains(out, "okuma 2") {
+		t.Errorf("baslik her cizimde yeniden okunmadi:\n%s", out)
+	}
 }
 
 func TestSelectionRunsMatchingItem(t *testing.T) {

@@ -57,12 +57,25 @@ func TestWatcherStaysWithinMemoryBudget(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = cmd.Process.Kill() })
 
+	// Cocuk erken cikarsa Windows PID'i baska bir process'e verebilir ve
+	// olcum alakasiz bir process'i gosterir (bir kez 34 MB olcup testi
+	// yaniltmisti). En olasi sebep tek ornek kilidi: makinede zaten bir
+	// izleyici varsa cocuk hemen cikar.
+	exited := make(chan error, 1)
+	go func() { exited <- cmd.Wait() }()
+
 	deadline := time.Now().Add(time.Duration(seconds) * time.Second)
 	var peak uint64
 	for time.Now().Before(deadline) {
+		select {
+		case err := <-exited:
+			t.Fatalf("izleyici olcum bitmeden cikti (%v); "+
+				"makinede baska bir izleyici calisiyor olabilir", err)
+		default:
+		}
 		ws, err := winproc.WorkingSet(cmd.Process.Pid)
 		if err != nil {
-			t.Fatalf("olcum basarisiz (izleyici olmus olabilir): %v", err)
+			t.Fatalf("olcum basarisiz: %v", err)
 		}
 		peak = max(peak, ws)
 		time.Sleep(2 * time.Second)
