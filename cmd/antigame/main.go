@@ -12,6 +12,7 @@ import (
 
 	"github.com/guts/antigame/internal/config"
 	"github.com/guts/antigame/internal/gate"
+	"github.com/guts/antigame/internal/setup"
 	"github.com/guts/antigame/internal/watch"
 	"github.com/guts/antigame/internal/wininput"
 	"github.com/guts/antigame/internal/winproc"
@@ -43,6 +44,8 @@ func main() {
 		err = gate.Run(config.Dir(), app)
 	case "watch":
 		err = runWatch()
+	case "setup":
+		err = setup.Run(config.Dir(), os.Stdin, os.Stdout)
 	default:
 		fmt.Fprintf(os.Stderr, "bilinmeyen komut: %s\n\n%s", os.Args[1], usage)
 		os.Exit(2)
