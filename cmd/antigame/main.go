@@ -11,6 +11,7 @@ import (
 	"runtime/debug"
 	"slices"
 	"syscall"
+	"time"
 
 	"github.com/guts/antigame/internal/config"
 	"github.com/guts/antigame/internal/gamelist"
@@ -18,6 +19,8 @@ import (
 	"github.com/guts/antigame/internal/menu"
 	"github.com/guts/antigame/internal/report"
 	"github.com/guts/antigame/internal/setup"
+	"github.com/guts/antigame/internal/status"
+	"github.com/guts/antigame/internal/tray"
 	"github.com/guts/antigame/internal/uninstall"
 	"github.com/guts/antigame/internal/watch"
 	"github.com/guts/antigame/internal/wininput"
@@ -152,5 +155,44 @@ func runWatch(background bool) error {
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	return w.Run(ctx)
+
+	// Izleyici arka planda, tepsi mesaj dongusu ise cagiran thread'de calisir:
+	// pencere mesajlari yalnizca pencereyi olusturan thread'e teslim edilir.
+	watcher := make(chan error, 1)
+	go func() { watcher <- w.Run(ctx) }()
+
+	if err := tray.Run(ctx, "antigame — izleyici çalışıyor", trayItems(dir)); err != nil {
+		// Tepsi acilamazsa izleyici yine de calismali; simge bir kolaylik,
+		// isin kendisi degil.
+		fmt.Fprintf(os.Stderr, "uyarı: tepsi simgesi açılamadı: %v\n", err)
+		return <-watcher
+	}
+	stop()
+	return <-watcher
+}
+
+func trayItems(dir string) []tray.Item {
+	return []tray.Item{
+		{Label: "Haftalık raporu aç", Run: func() {
+			if _, err := report.Run(dir); err != nil {
+				tray.Info("antigame", "Rapor açılamadı: "+err.Error())
+			}
+		}},
+		{Label: "Oyun listesi", Run: func() {
+			cfg, err := config.Load(dir)
+			if err != nil {
+				tray.Info("antigame", "Liste okunamadı: "+err.Error())
+				return
+			}
+			tray.Info("antigame — oyun listesi", gamelist.Format(cfg))
+		}},
+		{Label: "Durum", Run: func() {
+			s, err := status.Text(dir, time.Now().UTC())
+			if err != nil {
+				tray.Info("antigame", "Durum okunamadı: "+err.Error())
+				return
+			}
+			tray.Info("antigame — durum", s)
+		}},
+	}
 }
