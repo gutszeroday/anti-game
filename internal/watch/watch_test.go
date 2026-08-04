@@ -293,3 +293,25 @@ func TestWatchStartEventWrittenOnceOnFirstStep(t *testing.T) {
 		t.Errorf("watch_start %d kez yazildi, 1 bekleniyordu", starts)
 	}
 }
+
+func TestHeartbeatEventWrittenEveryTenMinutes(t *testing.T) {
+	f := &fakes{}
+	w, dir := newWatcher(t, f)
+
+	for i := range 26 {
+		if err := w.Step(t0.Add(time.Duration(i) * time.Minute)); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	var beats int
+	for _, e := range events(t, dir) {
+		if e.Ev == "hb" {
+			beats++
+		}
+	}
+	// 0, 10 ve 20. dakikalarda uc nabiz beklenir.
+	if beats < 2 {
+		t.Errorf("nabiz olayi yeterince yazilmadi: %d", beats)
+	}
+}

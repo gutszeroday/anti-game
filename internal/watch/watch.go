@@ -21,6 +21,11 @@ const (
 	stateSaveEvery  = 30 * time.Second
 	usageFlushEvery = time.Minute
 	gateCooldown    = 5 * time.Second
+	// hbEventEvery, gunluge yazilan nabiz araligidir. state.json'daki nabiz
+	// her yazimda uzerine biner, yani gecmisi yoktur; raporun "izleyici
+	// kapaliydi" araliklarini bulabilmesi icin gunluge de iz gerekiyor.
+	// Gunde ~144 satir, ihmal edilebilir.
+	hbEventEvery = 10 * time.Minute
 )
 
 type Options struct {
@@ -56,6 +61,7 @@ type Watcher struct {
 	lastHeartbeat time.Time
 	lastStateSave time.Time
 	lastGate      time.Time
+	lastHBEvent   time.Time
 
 	usageExe    string
 	usageDurS   int
@@ -278,6 +284,12 @@ func (w *Watcher) flushUsage(now time.Time) error {
 // gereksiz disk trafigi uretir; odemesiz sure hesabinda 30 saniyelik
 // gecikme onemsizdir.
 func (w *Watcher) persist(now time.Time) error {
+	if now.Sub(w.lastHBEvent) >= hbEventEvery {
+		w.lastHBEvent = now
+		if err := store.Append(w.o.Dir, store.Event{TS: now, Ev: "hb"}); err != nil {
+			return err
+		}
+	}
 	if now.Sub(w.lastHeartbeat) >= heartbeatEvery {
 		w.st.Heartbeat = now
 		w.lastHeartbeat = now
