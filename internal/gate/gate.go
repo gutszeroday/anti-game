@@ -11,7 +11,9 @@ package gate
 import (
 	"errors"
 	"fmt"
+	"runtime"
 	"strings"
+	"sync"
 	"time"
 	"unsafe"
 
@@ -209,6 +211,34 @@ func onSubmit() {
 	procSetFocus.Call(hEdit)
 }
 
+const gateClass = "AntigameGate"
+
+// Pencere sinifi process basina bir kez kaydedilir; ikinci kayit
+// "sinif zaten var" hatasi verir ve pencere hic acilmaz.
+var (
+	classOnce sync.Once
+	classErr  error
+)
+
+func registerClass() error {
+	classOnce.Do(func() {
+		hInst, _, _ := procGetModuleHandle.Call(0)
+		cursor, _, _ := procLoadCursor.Call(0, idcArrow)
+		wc := wndClassEx{
+			Size:       uint32(unsafe.Sizeof(wndClassEx{})),
+			WndProc:    windows.NewCallback(wndProc),
+			Instance:   windows.Handle(hInst),
+			Cursor:     windows.Handle(cursor),
+			Background: windows.Handle(colorWindowPlus),
+			ClassName:  utf16(gateClass),
+		}
+		if r, _, err := procRegisterClassEx.Call(uintptr(unsafe.Pointer(&wc))); r == 0 {
+			classErr = fmt.Errorf("pencere sınıfı kaydedilemedi: %w", err)
+		}
+	})
+	return classErr
+}
+
 // wndProc imzasindaki tum parametreler isaretci boyutunda olmak zorunda:
 // windows.NewCallback daha dar tipleri kabul etmez ve calisma aninda panikler.
 func wndProc(hwnd, message, wparam, lparam uintptr) uintptr {
@@ -229,24 +259,22 @@ func wndProc(hwnd, message, wparam, lparam uintptr) uintptr {
 // Show, kapi penceresini acar ve kod kabul edilene veya pencere
 // kapatilana kadar bloklar.
 func Show(p Params) error {
+	// Windows'ta mesaj kuyrugu thread basinadir: dongu, pencereyi olusturan
+	// thread'de donmek zorunda. Kilitlenmezse goroutine syscall'dan
+	// dondukten sonra baska bir OS thread'inde uyanabiliyor ve o andan
+	// itibaren pencerenin kuyrugu hic bosalmiyor — pencere "Yanit Vermiyor"
+	// haline geliyor.
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+
 	curParams = p
 	unlocked = false
 
+	if err := registerClass(); err != nil {
+		return err
+	}
 	hInst, _, _ := procGetModuleHandle.Call(0)
-	cursor, _, _ := procLoadCursor.Call(0, idcArrow)
-	className := utf16("AntigameGate")
-
-	wc := wndClassEx{
-		Size:       uint32(unsafe.Sizeof(wndClassEx{})),
-		WndProc:    windows.NewCallback(wndProc),
-		Instance:   windows.Handle(hInst),
-		Cursor:     windows.Handle(cursor),
-		Background: windows.Handle(colorWindowPlus),
-		ClassName:  className,
-	}
-	if r, _, err := procRegisterClassEx.Call(uintptr(unsafe.Pointer(&wc))); r == 0 {
-		return fmt.Errorf("pencere sınıfı kaydedilemedi: %w", err)
-	}
+	className := utf16(gateClass)
 
 	title := fmt.Sprintf("%s kapıda durduruldu", p.AppName)
 	hwnd, _, err := procCreateWindowEx.Call(
