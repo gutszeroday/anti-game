@@ -15,6 +15,9 @@ var (
 	psapi          = windows.NewLazySystemDLL("psapi.dll")
 	procEmptyWS    = psapi.NewProc("EmptyWorkingSet")
 	procGetMemInfo = psapi.NewProc("GetProcessMemoryInfo")
+
+	kernel32        = windows.NewLazySystemDLL("kernel32.dll")
+	procFreeConsole = kernel32.NewProc("FreeConsole")
 )
 
 // Proc, calisan bir process'in izleyici icin gereken minimum bilgisidir.
@@ -90,6 +93,19 @@ func Terminate(pid int) error {
 // maliyeti ihmal edilebilir, kazanci kalici bellek tabaninda buyuktur.
 func Trim() error {
 	r, _, err := procEmptyWS.Call(uintptr(windows.CurrentProcess()))
+	if r == 0 {
+		return err
+	}
+	return nil
+}
+
+// DetachConsole, process'i konsolundan ayirir ve pencereyi kapatir.
+// Zamanlanmis gorev konsol uygulamasini calistirdiginda her oturum
+// acilisinda siyah bir pencere kaliyor; kullanici onu kapatinca izleyici
+// de oluyordu. Ayrildiktan sonra stdout'a yazmak sessizce basarisiz olur,
+// bu yuzden yalnizca arka plan modunda cagriliyor.
+func DetachConsole() error {
+	r, _, err := procFreeConsole.Call()
 	if r == 0 {
 		return err
 	}

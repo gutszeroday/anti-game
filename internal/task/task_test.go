@@ -23,8 +23,10 @@ func TestXMLRunsWatchSubcommandAtLogon(t *testing.T) {
 	if !strings.Contains(x, "<LogonTrigger>") {
 		t.Error("oturum acilis tetikleyicisi yok")
 	}
-	if !strings.Contains(x, "<Arguments>watch</Arguments>") {
-		t.Error("watch alt komutu calistirilmiyor")
+	// Gorev konsol penceresi acmadan calismali; izleyici bunu --background
+	// ile anliyor ve kendi konsolundan ayriliyor.
+	if !strings.Contains(x, "<Arguments>watch --background</Arguments>") {
+		t.Error("watch arka plan modunda calistirilmiyor")
 	}
 	if !strings.Contains(x, `<Command>C:\bin\antigame.exe</Command>`) {
 		t.Error("exe yolu XML'e yazilmadi")

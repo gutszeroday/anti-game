@@ -72,7 +72,7 @@ func XML(exePath, userID string) string {
   <Actions Context="Author">
     <Exec>
       <Command>` + esc(exePath) + `</Command>
-      <Arguments>watch</Arguments>
+      <Arguments>watch --background</Arguments>
     </Exec>
   </Actions>
 </Task>`

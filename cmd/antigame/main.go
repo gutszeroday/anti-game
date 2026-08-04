@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"runtime/debug"
+	"slices"
 	"syscall"
 
 	"github.com/guts/antigame/internal/config"
@@ -55,7 +56,7 @@ func main() {
 		}
 		err = gate.Run(config.Dir(), app)
 	case "watch":
-		err = runWatch()
+		err = runWatch(slices.Contains(os.Args[2:], "--background"))
 	case "setup":
 		err = setup.Run(config.Dir(), os.Stdin, os.Stdout)
 	case "list":
@@ -94,17 +95,28 @@ func menuItems() []menu.Item {
 			}
 			return err
 		}},
-		{Key: "4", Label: "İzleyiciyi şimdi başlat (Ctrl+C ile durur)", Run: runWatch},
+		{Key: "4", Label: "İzleyiciyi şimdi başlat (Ctrl+C ile durur)", Run: func() error {
+			return runWatch(false)
+		}},
 		{Key: "5", Label: "Kaldır", Run: func() error {
 			return uninstall.Run(dir, os.Stdin, os.Stdout)
 		}},
 	}
 }
 
-func runWatch() error {
+func runWatch(background bool) error {
 	// Izleyici cok az ayirma yapar; varsayilan %100 yerine daha sik ve
 	// daha kucuk toplama, kalici bellek tabanini asagi ceker.
 	debug.SetGCPercent(20)
+
+	// Zamanlanmis gorev bu modu kullanir: konsol penceresi ekranda kalmasin
+	// ve kullanici onu kapatinca izleyici olmesin. Menuden baslatilan izleyici
+	// bu yola girmez, kullanicinin kendi penceresinde Ctrl+C ile durur.
+	if background {
+		if err := winproc.DetachConsole(); err != nil {
+			return err
+		}
+	}
 
 	dir := config.Dir()
 	cfg, err := config.Load(dir)
