@@ -14,6 +14,7 @@ import (
 	"github.com/guts/antigame/internal/config"
 	"github.com/guts/antigame/internal/gamelist"
 	"github.com/guts/antigame/internal/gate"
+	"github.com/guts/antigame/internal/menu"
 	"github.com/guts/antigame/internal/report"
 	"github.com/guts/antigame/internal/setup"
 	"github.com/guts/antigame/internal/uninstall"
@@ -31,12 +32,19 @@ Kullanım:
   antigame list               Oyun listesini görüntüle / düzenle
   antigame report             Haftalık raporu tarayıcıda aç
   antigame uninstall          Kodla doğrulayıp kaldır
+
+Argümansız çalıştırıldığında (ör. çift tıklayarak) menü açılır.
 `
 
 func main() {
+	// Cift tiklayan kullanici icin menu: argumansiz calistirildiginda
+	// kullanim metnini yazip kapanmak, ekranda hicbir sey gostermiyordu.
 	if len(os.Args) < 2 {
-		fmt.Fprint(os.Stderr, usage)
-		os.Exit(2)
+		if err := menu.Run(os.Stdin, os.Stdout, menuItems()); err != nil {
+			fmt.Fprintf(os.Stderr, "hata: %v\n", err)
+			os.Exit(1)
+		}
+		return
 	}
 	var err error
 	switch os.Args[1] {
@@ -67,6 +75,29 @@ func main() {
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "hata: %v\n", err)
 		os.Exit(1)
+	}
+}
+
+func menuItems() []menu.Item {
+	dir := config.Dir()
+	return []menu.Item{
+		{Key: "1", Label: "Kurulum (MFA eşleştirme)", Run: func() error {
+			return setup.Run(dir, os.Stdin, os.Stdout)
+		}},
+		{Key: "2", Label: "Oyun listesini göster", Run: func() error {
+			return gamelist.Run(dir, nil, os.Stdout)
+		}},
+		{Key: "3", Label: "Haftalık raporu aç", Run: func() error {
+			path, err := report.Run(dir)
+			if err == nil {
+				fmt.Println("Rapor:", path)
+			}
+			return err
+		}},
+		{Key: "4", Label: "İzleyiciyi şimdi başlat (Ctrl+C ile durur)", Run: runWatch},
+		{Key: "5", Label: "Kaldır", Run: func() error {
+			return uninstall.Run(dir, os.Stdin, os.Stdout)
+		}},
 	}
 }
 
