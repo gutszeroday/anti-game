@@ -5,6 +5,9 @@ import (
 	"bytes"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/guts/antigame/internal/totp"
 )
 
 const sampleKey = "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ"
@@ -124,6 +127,83 @@ func TestReadCodeDoesNotRevealForNormalCode(t *testing.T) {
 	}
 	if reveals != 0 {
 		t.Errorf("aciga cikarma bosuna kaydedildi: %d", reveals)
+	}
+}
+
+func confirmWith(t *testing.T, input string, secret []byte, now time.Time) (uint64, string, error) {
+	t.Helper()
+	var buf bytes.Buffer
+	r := bufio.NewReader(strings.NewReader(input))
+	c, err := confirmPairing(r, &buf, secret, func() time.Time { return now }, nil)
+	return c, buf.String(), err
+}
+
+func TestConfirmPairingAcceptsValidCode(t *testing.T) {
+	secret, _ := NewSecret()
+	now := time.Now().UTC()
+	code := totp.Code(secret, totp.Counter(now))
+
+	got, _, err := confirmWith(t, code+"\n", secret, now)
+	if err != nil {
+		t.Fatalf("gecerli kod reddedildi: %v", err)
+	}
+	if got != totp.Counter(now) {
+		t.Errorf("sayac yanlis: %d", got)
+	}
+}
+
+func TestConfirmPairingRetriesAfterWrongCode(t *testing.T) {
+	// Tek yanlis kod eslestirmeyi cope atmamali; QR bastan okutulmasin.
+	secret, _ := NewSecret()
+	now := time.Now().UTC()
+	good := totp.Code(secret, totp.Counter(now))
+
+	if _, _, err := confirmWith(t, "000000\n"+good+"\n", secret, now); err != nil {
+		t.Fatalf("ikinci denemede kabul edilmedi: %v", err)
+	}
+}
+
+func TestConfirmPairingReportsClockSkew(t *testing.T) {
+	secret, _ := NewSecret()
+	now := time.Now().UTC()
+	// Telefonun saati 4 dakika ileri.
+	skewed := totp.Code(secret, totp.Counter(now.Add(4*time.Minute)))
+	good := totp.Code(secret, totp.Counter(now))
+
+	_, out, err := confirmWith(t, skewed+"\n"+good+"\n", secret, now)
+	if err != nil {
+		t.Fatalf("confirmPairing: %v", err)
+	}
+	if !strings.Contains(out, "saat") {
+		t.Errorf("saat farki teshisi verilmedi:\n%s", out)
+	}
+	if !strings.Contains(out, "4 dakika") {
+		t.Errorf("saat farki miktari yazilmadi:\n%s", out)
+	}
+}
+
+func TestConfirmPairingReportsWrongEntry(t *testing.T) {
+	secret, _ := NewSecret()
+	other, _ := NewSecret()
+	now := time.Now().UTC()
+	good := totp.Code(secret, totp.Counter(now))
+
+	_, out, err := confirmWith(t, totp.Code(other, totp.Counter(now))+"\n"+good+"\n", secret, now)
+	if err != nil {
+		t.Fatalf("confirmPairing: %v", err)
+	}
+	if strings.Contains(out, "saat") {
+		t.Error("baska anahtarin kodu saat farki gibi raporlandi")
+	}
+	if !strings.Contains(out, "eşleşmiyor") {
+		t.Errorf("yanlis kayit teshisi verilmedi:\n%s", out)
+	}
+}
+
+func TestConfirmPairingCancelsOnEmptyLine(t *testing.T) {
+	secret, _ := NewSecret()
+	if _, _, err := confirmWith(t, "\n", secret, time.Now().UTC()); err == nil {
+		t.Fatal("bos satir kurulumu iptal etmedi")
 	}
 }
 

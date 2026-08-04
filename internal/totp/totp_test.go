@@ -96,6 +96,55 @@ func TestVerifyIgnoresSurroundingWhitespace(t *testing.T) {
 	}
 }
 
+func TestFindSkewReportsPhoneClockOffset(t *testing.T) {
+	secret := []byte("12345678901234567890")
+	now := time.Date(2026, 8, 4, 6, 0, 0, 0, time.UTC)
+
+	// Telefon 3 dakika ileride: kod dogru anahtardan uretilmis ama
+	// dogrulama penceresine girmiyor.
+	code := Code(secret, Counter(now.Add(3*time.Minute)))
+	skew, ok := FindSkew(secret, code, now)
+	if !ok {
+		t.Fatal("dogru anahtardan uretilen kod bulunamadi")
+	}
+	if skew.Round(time.Minute) != 3*time.Minute {
+		t.Errorf("saat farki 3 dk olmaliydi, %v geldi", skew)
+	}
+}
+
+func TestFindSkewHandlesBackwardOffset(t *testing.T) {
+	secret := []byte("12345678901234567890")
+	now := time.Date(2026, 8, 4, 6, 0, 0, 0, time.UTC)
+
+	code := Code(secret, Counter(now.Add(-5*time.Minute)))
+	skew, ok := FindSkew(secret, code, now)
+	if !ok {
+		t.Fatal("geri kalmis saatteki kod bulunamadi")
+	}
+	if skew.Round(time.Minute) != -5*time.Minute {
+		t.Errorf("saat farki -5 dk olmaliydi, %v geldi", skew)
+	}
+}
+
+func TestFindSkewFailsForDifferentSecret(t *testing.T) {
+	now := time.Date(2026, 8, 4, 6, 0, 0, 0, time.UTC)
+	code := Code([]byte("12345678901234567890"), Counter(now))
+	if _, ok := FindSkew([]byte("09876543210987654321"), code, now); ok {
+		t.Fatal("baska anahtardan uretilen kod eslesti")
+	}
+}
+
+func TestFindSkewDoesNotAcceptCodes(t *testing.T) {
+	// FindSkew yalnizca teshis icindir; kabul karari Verify'de kalmali.
+	secret := []byte("12345678901234567890")
+	now := time.Date(2026, 8, 4, 6, 0, 0, 0, time.UTC)
+	code := Code(secret, Counter(now.Add(10*time.Minute)))
+
+	if _, res := Verify(secret, code, now, 0); res != ResultBadCode {
+		t.Fatal("teshis penceresi dogrulamayi gevsetmis")
+	}
+}
+
 func TestLockDurationEscalates(t *testing.T) {
 	cases := []struct {
 		fails int

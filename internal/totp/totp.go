@@ -96,6 +96,29 @@ func Verify(secret []byte, code string, now time.Time, last uint64) (uint64, Res
 	return 0, ResultBadCode
 }
 
+// skewSearchSteps, teshis aramasinin kac adim geriye ve ileriye bakacagini
+// belirler: 20 adim = +-10 dakika, tipik telefon saat kaymasini kapsar.
+const skewSearchSteps = 20
+
+// FindSkew, kodun hangi zaman kaymasiyla uretildigini bulur. Yalnizca
+// teshis icindir: kabul karari Verify'de kalir ve orasi +-1 adimla sinirlidir.
+// Kod dogru anahtardan uretilmisse buradan donen sure, dogrulayan makine ile
+// kod ureten cihaz arasindaki saat farkidir.
+func FindSkew(secret []byte, code string, now time.Time) (time.Duration, bool) {
+	code = strings.TrimSpace(code)
+	base := Counter(now)
+	for delta := -skewSearchSteps; delta <= skewSearchSteps; delta++ {
+		c := int64(base) + int64(delta)
+		if c < 0 {
+			continue
+		}
+		if Code(secret, uint64(c)) == code {
+			return time.Duration(delta) * StepSeconds * time.Second, true
+		}
+	}
+	return 0, false
+}
+
 // LockDuration, toplam hatali deneme sayisina gore kilit suresini dondurur.
 // Her 5 hatada bir kademe yukselir: 15 dk, 30 dk, sonra 60 dk sabit.
 func LockDuration(fails int) time.Duration {

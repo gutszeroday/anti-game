@@ -11,6 +11,7 @@ import (
 	"crypto/rand"
 	"encoding/base32"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"io"
 	"net/url"
@@ -121,6 +122,51 @@ Anahtar: %s
 	}
 }
 
+// confirmPairing, dogru kod girilene kadar sorar ve kabul edilen kodun
+// sayacini dondurur. Bos satir kurulumu iptal eder.
+//
+// Yanlis kodda pes edilmiyor: eskiden tek hata secret'i cope atiyor ve
+// QR'in bastan okutulmasini gerektiriyordu. Hata sebebi de soyleniyor,
+// cunku "kod hatali" mesaji saat kaymasiyla yanlis kaydi ayirt etmiyordu.
+func confirmPairing(r *bufio.Reader, out io.Writer, secret []byte, now func() time.Time, onReveal func() error) (uint64, error) {
+	for {
+		code, err := readCode(r, out, encodeKey(secret), onReveal)
+		if err != nil && code == "" {
+			return 0, err
+		}
+		if code == "" {
+			return 0, errors.New("kod girilmedi, kurulum iptal edildi")
+		}
+
+		t := now()
+		counter, res := totp.Verify(secret, code, t, 0)
+		if res == totp.ResultOK {
+			return counter, nil
+		}
+
+		// Kod dogru anahtardan uretilmis ama pencereye girmiyorsa sorun
+		// saatlerin uyusmamasidir; bunu miktariyla soylemek gerekiyor.
+		if skew, ok := totp.FindSkew(secret, code, t); ok {
+			yon := "ileri"
+			if skew < 0 {
+				yon, skew = "geri", -skew
+			}
+			fmt.Fprintf(out, `
+Anahtar doğru, ama kodu üreten cihazın saati %d dakika %s.
+Telefonda saati otomatik ayara alın (Google Authenticator:
+Ayarlar > Zaman düzeltmesi > Kodlar için saati eşitle), sonra yeni kodu girin.
+
+`, int(skew.Round(time.Minute).Minutes()), yon)
+			continue
+		}
+		fmt.Fprint(out, `
+Bu kod anahtarla eşleşmiyor. Uygulamada "anti-game" kaydını seçtiğinizden
+emin olun; başka bir hesabın kodu girilmiş olabilir. Çıkmak için boş bırakıp Enter.
+
+`)
+	}
+}
+
 // Run, etkilesimli kurulum sihirbazidir.
 func Run(dir string, in io.Reader, out io.Writer) error {
 	r := bufio.NewReader(in)
@@ -170,17 +216,13 @@ func Run(dir string, in io.Reader, out io.Writer) error {
 	}
 
 	fmt.Fprintln(out, "\nQR kod tarayıcıda açıldı. Arkadaşınız okutsun.")
-	code, err := readCode(r, out, encodeKey(secret), func() error {
-		return store.Append(dir, store.Event{TS: time.Now().UTC(), Ev: "pairing_manual"})
-	})
+	counter, err := confirmPairing(r, out, secret,
+		func() time.Time { return time.Now().UTC() },
+		func() error {
+			return store.Append(dir, store.Event{TS: time.Now().UTC(), Ev: "pairing_manual"})
+		})
 	if err != nil {
 		return err
-	}
-
-	now := time.Now().UTC()
-	counter, res := totp.Verify(secret, code, now, 0)
-	if res != totp.ResultOK {
-		return fmt.Errorf("kod doğrulanamadı (%s); eşleştirme yapılmadı, kurulumu baştan çalıştırın", res)
 	}
 
 	if err := vault.Save(dir, secret); err != nil {
