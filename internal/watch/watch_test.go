@@ -117,7 +117,7 @@ func TestDoesNotBlockWhenSessionActive(t *testing.T) {
 	w, dir := newWatcher(t, f)
 
 	st, _ := store.LoadState(dir)
-	session.Open(st, t0)
+	session.Open(st, t0, "")
 	if err := store.SaveState(dir, st); err != nil {
 		t.Fatal(err)
 	}
@@ -139,7 +139,7 @@ func TestLogsGameEndWithDurationWhenProcessExits(t *testing.T) {
 	w, dir := newWatcher(t, f)
 
 	st, _ := store.LoadState(dir)
-	session.Open(st, t0)
+	session.Open(st, t0, "")
 	store.SaveState(dir, st)
 	w.Reload()
 
@@ -167,7 +167,7 @@ func TestSessionStaysAliveWhileGameRuns(t *testing.T) {
 	w, dir := newWatcher(t, f)
 
 	st, _ := store.LoadState(dir)
-	session.Open(st, t0)
+	session.Open(st, t0, "")
 	store.SaveState(dir, st)
 	w.Reload()
 
@@ -217,7 +217,7 @@ func TestUsageNotRecordedForGatedGame(t *testing.T) {
 	w, dir := newWatcher(t, f)
 
 	st, _ := store.LoadState(dir)
-	session.Open(st, t0)
+	session.Open(st, t0, "")
 	store.SaveState(dir, st)
 	w.Reload()
 
@@ -361,7 +361,7 @@ func TestLauncherLeftOpenEventuallyRelocksGate(t *testing.T) {
 	w.launcherWindow = 45 * time.Minute
 
 	st, _ := store.LoadState(dir)
-	session.Open(st, t0)
+	session.Open(st, t0, "")
 	store.SaveState(dir, st)
 	w.Reload()
 
@@ -435,7 +435,7 @@ func TestFamilyClosesAfterLauncherWindowExpires(t *testing.T) {
 	w.launcherWindow = 10 * time.Minute
 
 	st, _ := store.LoadState(dir)
-	session.Open(st, t0)
+	session.Open(st, t0, "")
 	store.SaveState(dir, st)
 	w.Reload()
 
@@ -483,7 +483,7 @@ func TestLauncherKeepsSessionAliveBetweenMatches(t *testing.T) {
 	w.launcherWindow = 45 * time.Minute
 
 	st, _ := store.LoadState(dir)
-	session.Open(st, t0)
+	session.Open(st, t0, "")
 	store.SaveState(dir, st)
 	w.Reload()
 

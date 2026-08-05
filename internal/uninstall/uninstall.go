@@ -19,6 +19,7 @@ import (
 
 	"github.com/guts/antigame/internal/auth"
 	"github.com/guts/antigame/internal/config"
+	"github.com/guts/antigame/internal/people"
 	"github.com/guts/antigame/internal/task"
 	"github.com/guts/antigame/internal/vault"
 )
@@ -69,14 +70,17 @@ func Run(dir string, in io.Reader, out io.Writer) error {
 	if err != nil {
 		return err
 	}
-	secret, err := vault.Load(dir)
+	keys, err := people.Keys(dir)
 	if err != nil {
 		return err
 	}
+	if len(keys) == 0 {
+		return vault.ErrNoSecret
+	}
 	v := auth.Verifier{
-		Dir:    dir,
-		Secret: secret,
-		Grace:  time.Duration(cfg.GraceMinutes) * time.Minute,
+		Dir:   dir,
+		Keys:  keys,
+		Grace: time.Duration(cfg.GraceMinutes) * time.Minute,
 	}
 	verify := func(code string) (bool, string, error) {
 		// Attempt basarida bir oturum acar; kaldirma sirasinda bunun

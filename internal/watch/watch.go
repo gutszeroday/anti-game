@@ -54,6 +54,10 @@ type tracked struct {
 	name    string
 	start   time.Time
 	activeS int
+	// who, oyun basladiginda oturumu acmis olan kisidir. Oyun bittiginde
+	// bakilmaz: oturum o ana kadar dusmus olabilir ve sure sahipsiz
+	// kalirdi.
+	who string
 }
 
 type Watcher struct {
@@ -236,9 +240,10 @@ func (w *Watcher) Step(now time.Time) error {
 
 		seen[p.PID] = true
 		if _, known := w.running[p.PID]; !known {
-			w.running[p.PID] = &tracked{exe: p.Exe, name: g.Name, start: now}
+			who := w.sessionOwner()
+			w.running[p.PID] = &tracked{exe: p.Exe, name: g.Name, start: now, who: who}
 			if err := store.Append(w.o.Dir, store.Event{
-				TS: now, Ev: "game_start", Exe: p.Exe, Name: g.Name, PID: p.PID,
+				TS: now, Ev: "game_start", Exe: p.Exe, Name: g.Name, PID: p.PID, Who: who,
 			}); err != nil {
 				return err
 			}
@@ -280,6 +285,15 @@ func (w *Watcher) block(now time.Time, p winproc.Proc, name string) error {
 	return nil
 }
 
+// sessionOwner, acik oturumu acmis kisinin ID'sini dondurur. Oturum yoksa
+// (kapi kurulmadan tutulan sureler) bos doner.
+func (w *Watcher) sessionOwner() string {
+	if w.st == nil || w.st.Session == nil {
+		return ""
+	}
+	return w.st.Session.OpenedBy
+}
+
 func (w *Watcher) reapExited(now time.Time, seen map[int]bool) error {
 	for pid, tr := range w.running {
 		if seen[pid] {
@@ -294,6 +308,7 @@ func (w *Watcher) reapExited(now time.Time, seen map[int]bool) error {
 			PID:     pid,
 			DurS:    int(now.Sub(tr.start).Seconds()),
 			ActiveS: tr.activeS,
+			Who:     tr.who,
 		}); err != nil {
 			return err
 		}

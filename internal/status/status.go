@@ -13,6 +13,18 @@ import (
 	"github.com/guts/antigame/internal/store"
 )
 
+// openedBy, oturumu kimin actigini parantez icinde dondurur. Kurtarma
+// koduyla ya da kapi kurulmadan acilmis oturumlarda bos doner.
+func openedBy(cfg *config.Config, st *store.State) string {
+	if st.Session == nil || st.Session.OpenedBy == "" {
+		return ""
+	}
+	if p, ok := cfg.FindPerson(st.Session.OpenedBy); ok {
+		return " — " + p.Name + " açtı"
+	}
+	return ""
+}
+
 func Text(dir string, now time.Time) (string, error) {
 	cfg, err := config.Load(dir)
 	if err != nil {
@@ -31,8 +43,8 @@ func Text(dir string, now time.Time) (string, error) {
 	var b strings.Builder
 
 	if left := session.Remaining(st, now, grace, launcherWindow); left > 0 {
-		fmt.Fprintf(&b, "Oturum: açık\nOyun kapalıyken %d dakika sonra düşer.\n",
-			int(left.Round(time.Minute).Minutes()))
+		fmt.Fprintf(&b, "Oturum: açık%s\nOyun kapalıyken %d dakika sonra düşer.\n",
+			openedBy(cfg, st), int(left.Round(time.Minute).Minutes()))
 	} else {
 		b.WriteString("Oturum: kapalı\nListedeki bir oyunu açmak için arkadaşınızdan kod gerekiyor.\n")
 	}

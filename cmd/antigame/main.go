@@ -20,6 +20,7 @@ import (
 	"github.com/guts/antigame/internal/gamelist"
 	"github.com/guts/antigame/internal/gate"
 	"github.com/guts/antigame/internal/menu"
+	"github.com/guts/antigame/internal/people"
 	"github.com/guts/antigame/internal/report"
 	"github.com/guts/antigame/internal/setup"
 	"github.com/guts/antigame/internal/single"
@@ -27,7 +28,6 @@ import (
 	"github.com/guts/antigame/internal/task"
 	"github.com/guts/antigame/internal/tray"
 	"github.com/guts/antigame/internal/uninstall"
-	"github.com/guts/antigame/internal/vault"
 	"github.com/guts/antigame/internal/watch"
 	"github.com/guts/antigame/internal/wininput"
 	"github.com/guts/antigame/internal/winproc"
@@ -40,6 +40,7 @@ Kullanım:
   antigame watch              İzleyiciyi başlat (zamanlanmış görev çalıştırır)
   antigame gate --app <ad>    Kod giriş penceresi
   antigame list               Oyun listesini görüntüle / düzenle
+  antigame people             Kapıyı açabilen kişileri yönet
   antigame report             Haftalık raporu tarayıcıda aç
   antigame autostart          Başlangıca ekle / çıkar
   antigame uninstall          Kodla doğrulayıp kaldır
@@ -71,6 +72,8 @@ func main() {
 		err = setup.Run(config.Dir(), os.Stdin, os.Stdout)
 	case "list":
 		err = gamelist.Run(config.Dir(), os.Args[2:], os.Stdout)
+	case "people":
+		err = people.Screen(config.Dir(), os.Stdin, os.Stdout)
 	case "uninstall":
 		err = uninstall.Run(config.Dir(), os.Stdin, os.Stdout)
 	case "autostart":
@@ -114,10 +117,11 @@ func menuHeader() string {
 		b.WriteString("İzleyici: durdu — 4 ile başlatabilirsiniz\n")
 	}
 
-	if _, err := vault.Load(dir); err != nil {
+	if !keyReady(dir) {
 		b.WriteString("MFA: kurulmadı — kapı devre dışı, yalnızca süre kaydediliyor\n")
 		return b.String()
 	}
+	b.WriteString(people.Summary(dir) + "\n")
 	if installed, _ := task.Installed(); installed {
 		b.WriteString("Başlangıç: kayıtlı (oturum açılışında başlar)\n")
 	} else {
@@ -129,6 +133,14 @@ func menuHeader() string {
 	}
 	b.WriteString(s)
 	return b.String()
+}
+
+// keyReady, kapiyi acabilecek en az bir kisi olup olmadigini soyler.
+// Bir kisinin bozuk anahtar dosyasi digerlerini kapinin disinda
+// birakmamali; bu yuzden sayilan, cozulebilen anahtarlardir.
+func keyReady(dir string) bool {
+	keys, err := people.Keys(dir)
+	return err == nil && len(keys) > 0
 }
 
 // runningExes, oyun eklerken secenek olarak sunulacak program adlaridir.
@@ -181,6 +193,9 @@ func menuItems() []menu.Item {
 		{Key: "8", Label: "Kaldır", Run: func() error {
 			return uninstall.Run(dir, os.Stdin, os.Stdout)
 		}},
+		{Key: "9", Label: "Kişileri yönet (anahtar verilenler)", Run: func() error {
+			return people.Screen(dir, os.Stdin, os.Stdout)
+		}},
 	}
 }
 
@@ -209,7 +224,7 @@ func toggleAutostart() error {
 		return err
 	}
 	fmt.Printf("Başlangıca eklendi: %s\n", exe)
-	if _, err := vault.Load(config.Dir()); err != nil {
+	if !keyReady(config.Dir()) {
 		fmt.Println("Uyarı: MFA kurulumu yapılmadığı için kapı devre dışı;" +
 			" izleyici yalnızca süre kaydeder. Kurulumu 1 ile tamamlayın.")
 	}
@@ -295,10 +310,7 @@ func runWatch(background bool) error {
 		},
 		// Eslestirme yoksa kapi acilamaz; izleyici oyunu oldurup
 		// kullaniciyi kod girecek yeri olmadan kilitlememeli.
-		SecretReady: func() bool {
-			_, err := vault.Load(dir)
-			return err == nil
-		},
+		SecretReady: func() bool { return keyReady(dir) },
 	})
 	if err != nil {
 		return err

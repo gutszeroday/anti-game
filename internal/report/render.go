@@ -109,6 +109,19 @@ code{background:#1c2029;padding:.15rem .4rem;border-radius:4px}
 	}
 	b.WriteString(`</section>`)
 
+	b.WriteString(`<section><h2>Kim ile ne kadar</h2>`)
+	if len(s.People) == 0 {
+		b.WriteString(`<p class="empty">Bu hafta kapı açılmadı.</p>`)
+	} else {
+		b.WriteString(`<table><tr><th>Kişi</th><th class="num">Süre</th><th class="num">Kapıyı açma</th></tr>`)
+		for _, p := range s.People {
+			fmt.Fprintf(&b, `<tr><td>%s</td><td class="num">%s</td><td class="num">%d</td></tr>`,
+				html.EscapeString(p.Name), hm(p.DurS), p.Unlocks)
+		}
+		b.WriteString(`</table>`)
+	}
+	b.WriteString(`</section>`)
+
 	dayLabels := make([]string, 0, len(s.Days))
 	dayValues := make([]int, 0, len(s.Days))
 	for _, d := range s.Days {

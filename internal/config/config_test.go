@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -225,5 +226,82 @@ func TestLoadKeepsIntentionallyEmptyList(t *testing.T) {
 	c, _ := Load(dir)
 	if len(c.Gated) != 0 {
 		t.Errorf("bilerek bosaltilan liste varsayilanla dolduruldu: %+v", c.Gated)
+	}
+}
+
+func TestFriendFieldsMigrateToPerson(t *testing.T) {
+	dir := t.TempDir()
+	raw := `{"friend_name":"Baran","friend_hint":"WhatsApp","gated":[]}`
+	if err := os.WriteFile(FilePath(dir), []byte(raw), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cfg.People) != 1 {
+		t.Fatalf("kisi listesi olusmadi: %+v", cfg.People)
+	}
+	p := cfg.People[0]
+	if p.ID != "p1" || p.Name != "Baran" || p.Hint != "WhatsApp" {
+		t.Errorf("tasima yanlis: %+v", p)
+	}
+	need, err := NeedsPeopleMigration(dir)
+	if err != nil || !need {
+		t.Errorf("goc diske yazilmasi gerektigi bildirilmedi: %v %v", need, err)
+	}
+}
+
+func TestExistingPeopleAreNotOverwrittenByFriendFields(t *testing.T) {
+	dir := t.TempDir()
+	raw := `{"friend_name":"Baran","people":[{"id":"p3","name":"Ali"}],"gated":[]}`
+	if err := os.WriteFile(FilePath(dir), []byte(raw), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cfg.People) != 1 || cfg.People[0].Name != "Ali" {
+		t.Errorf("mevcut liste ezildi: %+v", cfg.People)
+	}
+}
+
+// Kimlik dosya adina giriyor; elle yazilmis bir deger dizin disina
+// cikamamali.
+func TestInvalidPersonIDsAreDropped(t *testing.T) {
+	dir := t.TempDir()
+	raw := `{"people":[{"id":"../evil","name":"Kotu"},{"id":"p2","name":"Ali"}],"gated":[]}`
+	if err := os.WriteFile(FilePath(dir), []byte(raw), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cfg.People) != 1 || cfg.People[0].ID != "p2" {
+		t.Errorf("gecersiz kimlik ayiklanmadi: %+v", cfg.People)
+	}
+}
+
+func TestTakePersonIDDoesNotReuseRemovedID(t *testing.T) {
+	c := &Config{People: []Person{{ID: "p1"}, {ID: "p2"}}}
+	if got := c.TakePersonID(); got != "p3" {
+		t.Fatalf("beklenen p3, gelen %s", got)
+	}
+	// p3 silinmis gibi davran: sayac geri sarmamali.
+	if got := c.TakePersonID(); got != "p4" {
+		t.Errorf("kimlik yeniden kullanildi: %s", got)
+	}
+}
+
+func TestValidPersonIDRejectsPathCharacters(t *testing.T) {
+	for _, id := range []string{"", "../x", "p/1", "P1", "p 1", strings.Repeat("p", 17)} {
+		if ValidPersonID(id) {
+			t.Errorf("%q kabul edildi", id)
+		}
+	}
+	if !ValidPersonID("p12") {
+		t.Error("gecerli kimlik reddedildi")
 	}
 }

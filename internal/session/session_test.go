@@ -21,7 +21,7 @@ func TestNoSessionIsInactive(t *testing.T) {
 func TestOpenMakesActiveImmediately(t *testing.T) {
 	now := time.Date(2026, 8, 3, 18, 0, 0, 0, time.UTC)
 	st := &store.State{}
-	Open(st, now)
+	Open(st, now, "")
 	if !Active(st, now, grace, launcher) {
 		t.Fatal("acilan oturum aktif degil")
 	}
@@ -31,7 +31,7 @@ func TestGraceLetsUserLaunchGameAfterUnlock(t *testing.T) {
 	// Kod girildikten sonra oyunu baslatmak icin odemesiz sure taninir.
 	now := time.Date(2026, 8, 3, 18, 0, 0, 0, time.UTC)
 	st := &store.State{}
-	Open(st, now)
+	Open(st, now, "")
 	if !Active(st, now.Add(9*time.Minute), grace, launcher) {
 		t.Fatal("odemesiz sure icinde oturum dustu")
 	}
@@ -40,7 +40,7 @@ func TestGraceLetsUserLaunchGameAfterUnlock(t *testing.T) {
 func TestSessionExpiresAfterGrace(t *testing.T) {
 	now := time.Date(2026, 8, 3, 18, 0, 0, 0, time.UTC)
 	st := &store.State{}
-	Open(st, now)
+	Open(st, now, "")
 	if Active(st, now.Add(11*time.Minute), grace, launcher) {
 		t.Fatal("odemesiz sure dolmasina ragmen oturum aktif")
 	}
@@ -49,7 +49,7 @@ func TestSessionExpiresAfterGrace(t *testing.T) {
 func TestTouchKeepsSessionAliveWhileGameRuns(t *testing.T) {
 	now := time.Date(2026, 8, 3, 18, 0, 0, 0, time.UTC)
 	st := &store.State{}
-	Open(st, now)
+	Open(st, now, "")
 	// Uc saat boyunca izleyici oyunu gormeye devam ediyor.
 	for i := 1; i <= 180; i++ {
 		Touch(st, now.Add(time.Duration(i)*time.Minute), true)
@@ -62,7 +62,7 @@ func TestTouchKeepsSessionAliveWhileGameRuns(t *testing.T) {
 func TestSessionExpiresGraceAfterLastTouch(t *testing.T) {
 	now := time.Date(2026, 8, 3, 18, 0, 0, 0, time.UTC)
 	st := &store.State{}
-	Open(st, now)
+	Open(st, now, "")
 	Touch(st, now.Add(2*time.Hour), true) // oyun kapandi
 	if !Active(st, now.Add(2*time.Hour+9*time.Minute), grace, launcher) {
 		t.Fatal("oyun kapandiktan hemen sonra oturum dustu")
@@ -83,7 +83,7 @@ func TestTouchOnClosedSessionDoesNotReopenIt(t *testing.T) {
 func TestCloseClearsSession(t *testing.T) {
 	now := time.Now()
 	st := &store.State{}
-	Open(st, now)
+	Open(st, now, "")
 	Close(st)
 	if st.Session != nil || Active(st, now, grace, launcher) {
 		t.Fatal("Close oturumu temizlemedi")
@@ -95,7 +95,7 @@ func TestLauncherAloneDoesNotKeepSessionForever(t *testing.T) {
 	// tazeleniyordu; kod bir kez alininca gun boyu girip cikilabiliyordu.
 	now := time.Date(2026, 8, 3, 18, 0, 0, 0, time.UTC)
 	st := &store.State{}
-	Open(st, now)
+	Open(st, now, "")
 	Touch(st, now.Add(time.Minute), true) // oyun oynandi
 	Touch(st, now.Add(5*time.Minute), true)
 
@@ -117,7 +117,7 @@ func TestLauncherKeepsSessionAliveBetweenMatches(t *testing.T) {
 	// dusmus olmasi oyunu yuklenirken oldururdu.
 	now := time.Date(2026, 8, 3, 18, 0, 0, 0, time.UTC)
 	st := &store.State{}
-	Open(st, now)
+	Open(st, now, "")
 	Touch(st, now.Add(30*time.Minute), true) // mac bitti
 
 	for i := 31; i <= 55; i++ {
@@ -143,9 +143,9 @@ func TestOldStateWithoutLastSeenStillWorks(t *testing.T) {
 func TestOpenPreservesOpenedAtOnReopen(t *testing.T) {
 	first := time.Date(2026, 8, 3, 18, 0, 0, 0, time.UTC)
 	st := &store.State{}
-	Open(st, first)
+	Open(st, first, "")
 	second := first.Add(3 * time.Hour)
-	Open(st, second)
+	Open(st, second, "")
 	if !st.Session.OpenedAt.Equal(second) {
 		t.Errorf("yeni oturum acilisinda OpenedAt guncellenmedi: %v", st.Session.OpenedAt)
 	}

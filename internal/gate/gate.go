@@ -21,14 +21,58 @@ import (
 
 	"github.com/guts/antigame/internal/auth"
 	"github.com/guts/antigame/internal/config"
+	"github.com/guts/antigame/internal/people"
 	"github.com/guts/antigame/internal/vault"
 )
 
 type Params struct {
-	AppName    string
-	FriendName string
-	FriendHint string
-	Verify     func(code string) (auth.Outcome, error)
+	AppName string
+	// People, kodu isteyebilecegi kisilerdir. Kapi kisi sectirmez;
+	// girilen kod hangi anahtara uyuyorsa oturum onun adina acilir.
+	People []config.Person
+	Verify func(code string) (auth.Outcome, error)
+}
+
+// maxNamesShown, kapida adi yazilacak en fazla kisi sayisidir. Pencere
+// dar; uzun liste satiri tasiriyordu.
+const maxNamesShown = 3
+
+// maxLineRunes, 430 piksellik alana varsayilan arayuz fontuyla sigan
+// yaklasik karakter sayisidir.
+const maxLineRunes = 62
+
+// AskLine, "kod kimde" satirini uretir.
+//
+// Isim cekimi yapilmiyor ("Baran'dan" gibi): Turkce ekler unlu uyumuna
+// gore degisiyor ve sabit bir ek her isimde yanlis okunuyordu.
+func AskLine(ps []config.Person) string {
+	if len(ps) == 0 {
+		return "Kodu arkadaşınızdan isteyin."
+	}
+	line := askLine(ps, true)
+	// Satir pencereye sigmiyorsa once iletisim notlari dusuruluyor:
+	// isimler olmadan kimden kod isteneceği anlasilmaz, notlar olmadan
+	// anlasilir.
+	if len([]rune(line)) > maxLineRunes {
+		line = askLine(ps, false)
+	}
+	return line
+}
+
+func askLine(ps []config.Person, hints bool) string {
+	var parts []string
+	for i, p := range ps {
+		if i == maxNamesShown {
+			parts = append(parts, fmt.Sprintf("ve %d kişi daha", len(ps)-maxNamesShown))
+			break
+		}
+		s := p.Name
+		if hints && p.Hint != "" {
+			s += " (" + p.Hint + ")"
+		}
+		parts = append(parts, s)
+	}
+	return "Kod kimde: " + strings.Join(parts, ", ")
 }
 
 // check, girilen kodu kirpip dogrulayiciya iletir.
@@ -72,20 +116,22 @@ func Run(dir, appName string) error {
 	if err != nil {
 		return err
 	}
-	secret, err := vault.Load(dir)
+	keys, err := people.Keys(dir)
 	if err != nil {
 		return err
 	}
+	if len(keys) == 0 {
+		return vault.ErrNoSecret
+	}
 	v := auth.Verifier{
-		Dir:    dir,
-		Secret: secret,
-		Grace:  time.Duration(cfg.GraceMinutes) * time.Minute,
+		Dir:   dir,
+		Keys:  keys,
+		Grace: time.Duration(cfg.GraceMinutes) * time.Minute,
 	}
 	return Show(Params{
-		AppName:    appName,
-		FriendName: cfg.FriendName,
-		FriendHint: cfg.FriendHint,
-		Verify:     v.Attempt,
+		AppName: appName,
+		People:  cfg.People,
+		Verify:  v.Attempt,
 	})
 }
 
@@ -286,13 +332,7 @@ func Show(p Params) error {
 	}
 
 	prompt := fmt.Sprintf("%s açılmadan önce MFA kodu gerekiyor.", p.AppName)
-	who := "Kodu arkadaşınızdan isteyin."
-	if p.FriendName != "" {
-		who = fmt.Sprintf("Kodu %s'ten isteyin.", p.FriendName)
-		if p.FriendHint != "" {
-			who += " (" + p.FriendHint + ")"
-		}
-	}
+	who := AskLine(p.People)
 
 	font, _, _ := procGetStockObject.Call(defaultGUIFont)
 	static := utf16("STATIC")

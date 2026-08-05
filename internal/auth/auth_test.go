@@ -14,10 +14,10 @@ var secret = []byte("12345678901234567890")
 func newVerifier(t *testing.T, now time.Time) Verifier {
 	t.Helper()
 	return Verifier{
-		Dir:    t.TempDir(),
-		Secret: secret,
-		Grace:  10 * time.Minute,
-		Now:    func() time.Time { return now },
+		Dir:   t.TempDir(),
+		Keys:  []Key{{ID: "p1", Secret: secret}},
+		Grace: 10 * time.Minute,
+		Now:   func() time.Time { return now },
 	}
 }
 
@@ -35,8 +35,11 @@ func TestValidCodeOpensSession(t *testing.T) {
 	if st.Session == nil {
 		t.Fatal("oturum acilmadi")
 	}
-	if st.LastTOTPCounter != totp.Counter(now) {
-		t.Errorf("sayac kaydedilmedi: %d", st.LastTOTPCounter)
+	if st.Counter("p1") != totp.Counter(now) {
+		t.Errorf("sayac kaydedilmedi: %d", st.Counter("p1"))
+	}
+	if st.Session.OpenedBy != "p1" {
+		t.Errorf("oturumu acan kisi yazilmadi: %q", st.Session.OpenedBy)
 	}
 }
 
@@ -193,5 +196,125 @@ func TestRecoveryCodeWorksOnceOnly(t *testing.T) {
 func TestHashRecoveryIsSaltDependent(t *testing.T) {
 	if HashRecovery("tuz1", "kod") == HashRecovery("tuz2", "kod") {
 		t.Fatal("farkli tuzlar ayni ozeti uretti")
+	}
+}
+
+var secondSecret = []byte("09876543210987654321")
+
+func newTwoPersonVerifier(t *testing.T, now time.Time) Verifier {
+	t.Helper()
+	return Verifier{
+		Dir: t.TempDir(),
+		Keys: []Key{
+			{ID: "p1", Secret: secret},
+			{ID: "p2", Secret: secondSecret},
+		},
+		Grace: 10 * time.Minute,
+		Now:   func() time.Time { return now },
+	}
+}
+
+func TestSecondPersonCodeIsAccepted(t *testing.T) {
+	now := time.Unix(1111111109, 0).UTC()
+	v := newTwoPersonVerifier(t, now)
+
+	out, err := v.Attempt(totp.Code(secondSecret, totp.Counter(now)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !out.OK {
+		t.Fatalf("ikinci kisinin kodu reddedildi: %s", out.Message)
+	}
+	if out.Who != "p2" {
+		t.Errorf("kapiyi acan kisi p2 olmaliydi, %q geldi", out.Who)
+	}
+	st, _ := store.LoadState(v.Dir)
+	if st.Session.OpenedBy != "p2" {
+		t.Errorf("oturum p2 adina acilmadi: %q", st.Session.OpenedBy)
+	}
+}
+
+// Sayaclar ortak tutulursa bir kisinin kullandigi kod, digerinin ayni
+// zaman diliminde urettigi kodu "kullanilmis" sayip reddeder.
+func TestUsedCodeOfOnePersonDoesNotBlockAnother(t *testing.T) {
+	now := time.Unix(1111111109, 0).UTC()
+	v := newTwoPersonVerifier(t, now)
+
+	if out, err := v.Attempt(totp.Code(secret, totp.Counter(now))); err != nil || !out.OK {
+		t.Fatalf("ilk kisi giremedi: %v %+v", err, out)
+	}
+	st, _ := store.LoadState(v.Dir)
+	st.Session = nil
+	if err := store.SaveState(v.Dir, st); err != nil {
+		t.Fatal(err)
+	}
+
+	out, err := v.Attempt(totp.Code(secondSecret, totp.Counter(now)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !out.OK {
+		t.Fatalf("ikinci kisi ayni dilimde reddedildi: %s", out.Message)
+	}
+}
+
+func TestReplayOfOnePersonStillReportsReplay(t *testing.T) {
+	now := time.Unix(1111111109, 0).UTC()
+	v := newTwoPersonVerifier(t, now)
+	code := totp.Code(secret, totp.Counter(now))
+	if _, err := v.Attempt(code); err != nil {
+		t.Fatal(err)
+	}
+
+	out, err := v.Attempt(code)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out.OK {
+		t.Fatal("kullanilmis kod kabul edildi")
+	}
+	if !strings.Contains(out.Message, "daha önce") {
+		t.Errorf("tekrar kullanim mesaji beklendi, %q geldi", out.Message)
+	}
+}
+
+func TestUnlockEventCarriesPerson(t *testing.T) {
+	now := time.Unix(1111111109, 0).UTC()
+	v := newTwoPersonVerifier(t, now)
+	if _, err := v.Attempt(totp.Code(secondSecret, totp.Counter(now))); err != nil {
+		t.Fatal(err)
+	}
+	events, _ := store.Read(v.Dir, now.Add(-time.Hour), now.Add(time.Hour))
+	for _, e := range events {
+		if e.Ev == "unlock" && e.Who == "p2" {
+			return
+		}
+	}
+	t.Fatalf("unlock olayi kisiyi tasimadi: %+v", events)
+}
+
+func TestRecoveryUnlockHasNoPerson(t *testing.T) {
+	now := time.Unix(1111111109, 0).UTC()
+	v := newTwoPersonVerifier(t, now)
+
+	code, salt, hash, err := NewRecoveryCode()
+	if err != nil {
+		t.Fatal(err)
+	}
+	st, _ := store.LoadState(v.Dir)
+	st.RecoverySalt, st.RecoveryHash = salt, hash
+	if err := store.SaveState(v.Dir, st); err != nil {
+		t.Fatal(err)
+	}
+
+	out, err := v.Attempt(code)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !out.OK {
+		t.Fatalf("kurtarma kodu reddedildi: %s", out.Message)
+	}
+	if out.Who != "" {
+		t.Errorf("kurtarma kodu bir kisiye yazildi: %q", out.Who)
 	}
 }

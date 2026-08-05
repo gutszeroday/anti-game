@@ -46,17 +46,42 @@ type Suggestion struct {
 	DurS int
 }
 
+// PersonTotal, bir kisinin bu haftaki payidir: oturumunu actigi
+// oyunlarda gecen sure ve kac kez kapiyi actigi.
+type PersonTotal struct {
+	ID      string
+	Name    string
+	DurS    int
+	Unlocks int
+}
+
 type Summary struct {
 	From        time.Time
 	To          time.Time
 	TotalS      int
 	PrevTotalS  int
 	Games       []GameTotal
+	People      []PersonTotal
 	Days        []DayTotal
 	Hours       [24]int
 	Weeks       []WeekTotal
 	Gaps        []Gap
 	Suggestions []Suggestion
+}
+
+// personName, kisi ID'sini rapora yazilacak ada cevirir.
+//
+// Kayittan silinmis kisinin adi bilinmez ama suresi durur; ID'siyle ve
+// "silinmiş" notuyla gosterilir. Bos ID, kapi kurulmadan ya da kurtarma
+// koduyla acilmis oturumlarin suresidir.
+func personName(cfg *config.Config, id string) string {
+	if id == "" {
+		return "Kapı yokken"
+	}
+	if p, ok := cfg.FindPerson(id); ok {
+		return p.Name
+	}
+	return id + " (silinmiş)"
 }
 
 // weekStart, verilen ani iceren haftanin pazartesi 00:00'ini dondurur.
@@ -76,7 +101,19 @@ func Aggregate(ev []store.Event, cfg *config.Config, now time.Time, loc *time.Lo
 	days := map[time.Time]int{}
 	usage := map[string]int{}
 	weeks := map[time.Time]int{}
+	persons := map[string]*PersonTotal{}
 	var beats []time.Time
+
+	// person, kisi satirini olusturur. Silinmis kisiler de sayilir:
+	// gecmis sure, kisinin listeden cikmasiyla yok olmamali.
+	person := func(id string) *PersonTotal {
+		p, ok := persons[id]
+		if !ok {
+			p = &PersonTotal{ID: id, Name: personName(cfg, id)}
+			persons[id] = p
+		}
+		return p
+	}
 
 	for _, e := range ev {
 		switch e.Ev {
@@ -100,6 +137,7 @@ func Aggregate(ev []store.Event, cfg *config.Config, now time.Time, loc *time.Lo
 			switch {
 			case !w.Before(thisWeek):
 				s.TotalS += e.DurS
+				person(e.Who).DurS += e.DurS
 				name := e.Name
 				if name == "" {
 					name = e.Exe
@@ -120,6 +158,14 @@ func Aggregate(ev []store.Event, cfg *config.Config, now time.Time, loc *time.Lo
 				s.PrevTotalS += e.DurS
 			}
 
+		case "unlock":
+			// Kurtarma koduyla acilan kapinin sahibi yok; "Kapı yokken"
+			// satirina yazilmamasi icin ayri tutulur.
+			if e.Method == "recovery" || weekStart(e.TS, loc).Before(thisWeek) {
+				continue
+			}
+			person(e.Who).Unlocks++
+
 		case "usage":
 			if _, gated := cfg.Match(e.Exe, ""); gated {
 				continue
@@ -135,6 +181,16 @@ func Aggregate(ev []store.Event, cfg *config.Config, now time.Time, loc *time.Lo
 		s.Games = append(s.Games, *g)
 	}
 	sort.Slice(s.Games, func(i, j int) bool { return s.Games[i].DurS > s.Games[j].DurS })
+
+	for _, p := range persons {
+		s.People = append(s.People, *p)
+	}
+	sort.Slice(s.People, func(i, j int) bool {
+		if s.People[i].DurS != s.People[j].DurS {
+			return s.People[i].DurS > s.People[j].DurS
+		}
+		return s.People[i].ID < s.People[j].ID
+	})
 
 	for d, v := range days {
 		s.Days = append(s.Days, DayTotal{Day: d, DurS: v})

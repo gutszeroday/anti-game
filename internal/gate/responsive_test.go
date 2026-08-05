@@ -10,6 +10,7 @@ import (
 	"golang.org/x/sys/windows"
 
 	"github.com/guts/antigame/internal/auth"
+	"github.com/guts/antigame/internal/config"
 )
 
 var (
@@ -32,8 +33,8 @@ func TestGateWindowStaysResponsive(t *testing.T) {
 	done := make(chan error, 1)
 	go func() {
 		done <- Show(Params{
-			AppName:    "Test Oyun",
-			FriendName: "arkadas",
+			AppName: "Test Oyun",
+			People:  []config.Person{{ID: "p1", Name: "arkadas"}},
 			Verify: func(string) (auth.Outcome, error) {
 				return auth.Outcome{Message: "test"}, nil
 			},

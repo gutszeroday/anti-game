@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 )
 
@@ -21,10 +22,21 @@ type Game struct {
 	Launcher bool `json:"launcher,omitempty"`
 }
 
+// Person, kapiyi acabilen bir kisidir. Her kisinin kendi TOTP anahtari
+// vardir; anahtar dosyasi vault tarafinda ID'ye gore adlandirilir.
+type Person struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+	Hint string `json:"hint,omitempty"`
+}
+
 type Config struct {
-	FriendName string `json:"friend_name"`
-	FriendHint string `json:"friend_hint"`
-	Gated      []Game `json:"gated"`
+	// FriendName ve FriendHint artik okunmuyor; People bos gelen eski
+	// kurulumlari tasimak icin duruyor.
+	FriendName string   `json:"friend_name,omitempty"`
+	FriendHint string   `json:"friend_hint,omitempty"`
+	People     []Person `json:"people"`
+	Gated      []Game   `json:"gated"`
 	// GraceMinutes, listedeki hicbir sey calismadiginda oturumun ne kadar
 	// daha acik kalacagidir.
 	GraceMinutes int `json:"grace_minutes"`
@@ -36,6 +48,76 @@ type Config struct {
 	PollMS                int `json:"poll_ms"`
 	FocusSampleS          int `json:"focus_sample_s"`
 	IdleThresholdS        int `json:"idle_threshold_s"`
+	// NextPersonSeq, bir sonraki kisiye verilecek numaradir. Listeye
+	// bakip en buyuk numarayi bulmak yetmez: son kisi silindiginde ayni
+	// numara geri doner ve silinen kisinin gecmis suresi yeni kisiye
+	// yazilirdi.
+	NextPersonSeq int `json:"next_person_seq,omitempty"`
+}
+
+// ValidPersonID, kisi ID'sinin dosya adinda kullanilmaya uygun olup
+// olmadigini soyler. ID anahtar dosyasinin adina giriyor: elle duzenlenmis
+// bir config.json'daki ".." ya da "/" iceren bir deger baska bir dosyayi
+// ezebilirdi.
+func ValidPersonID(id string) bool {
+	if id == "" || len(id) > 16 {
+		return false
+	}
+	for _, r := range id {
+		if (r < 'a' || r > 'z') && (r < '0' || r > '9') {
+			return false
+		}
+	}
+	return true
+}
+
+// FindPerson, ID'ye gore kisiyi dondurur.
+func (c *Config) FindPerson(id string) (*Person, bool) {
+	for i := range c.People {
+		if c.People[i].ID == id {
+			return &c.People[i], true
+		}
+	}
+	return nil, false
+}
+
+// TakePersonID, kullanilmamis bir ID uretir ve sayaci ilerletir.
+// Cagiran, ayni islemde config'i kaydetmek zorundadir.
+func (c *Config) TakePersonID() string {
+	if c.NextPersonSeq < 1 {
+		c.NextPersonSeq = 1
+		for _, p := range c.People {
+			if n, err := strconv.Atoi(strings.TrimPrefix(p.ID, "p")); err == nil && n >= c.NextPersonSeq {
+				c.NextPersonSeq = n + 1
+			}
+		}
+	}
+	id := "p" + strconv.Itoa(c.NextPersonSeq)
+	c.NextPersonSeq++
+	return id
+}
+
+// migratePeople, tek arkadas alanlarini kisi listesine tasir ve gecersiz
+// kayitlari ayiklar. Degisiklik olduysa true doner; kaydetmek cagirana ait.
+func migratePeople(c *Config) bool {
+	changed := false
+	kept := c.People[:0]
+	seen := map[string]bool{}
+	for _, p := range c.People {
+		if !ValidPersonID(p.ID) || seen[p.ID] {
+			changed = true
+			continue
+		}
+		seen[p.ID] = true
+		kept = append(kept, p)
+	}
+	c.People = kept
+
+	if len(c.People) == 0 && c.FriendName != "" {
+		c.People = []Person{{ID: "p1", Name: c.FriendName, Hint: c.FriendHint}}
+		changed = true
+	}
+	return changed
 }
 
 const fileName = "config.json"
@@ -121,7 +203,27 @@ func Load(dir string) (*Config, error) {
 		c.IdleThresholdS = d.IdleThresholdS
 	}
 	forceKnownLauncherFlags(c.Gated, d.Gated)
+	migratePeople(&c)
 	return &c, nil
+}
+
+// NeedsPeopleMigration, dosyadaki kayitlarin diske yazilmasi gereken bir
+// donusumden gectigini soyler. Load donusumu bellekte her zaman yapar;
+// kaydetmeyi yalnizca kisileri yoneten kod yapar, boylece izleyici gibi
+// salt okuyan yollar dosyaya dokunmaz.
+func NeedsPeopleMigration(dir string) (bool, error) {
+	b, err := os.ReadFile(FilePath(dir))
+	if os.IsNotExist(err) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	var c Config
+	if err := json.Unmarshal(b, &c); err != nil {
+		return false, err
+	}
+	return migratePeople(&c), nil
 }
 
 // forceKnownLauncherFlags, varsayilan listede adi gecen exe'ler icin

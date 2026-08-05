@@ -49,11 +49,12 @@ func Remaining(st *store.State, now time.Time, grace, launcherWindow time.Durati
 	return left
 }
 
-// Open, gecerli kod girildiginde yeni bir oturum acar.
+// Open, gecerli kod girildiginde yeni bir oturum acar. who, kodu veren
+// kisinin ID'sidir; kurtarma kodunda bos gecilir.
 // Sayaclar su ana ayarlanir; bu, kullaniciya oyunu baslatmasi icin
 // odemesiz sure kadar zaman tanir.
-func Open(st *store.State, now time.Time) {
-	st.Session = &store.Session{OpenedAt: now, LastGameSeen: now, LastSeen: now}
+func Open(st *store.State, now time.Time, who string) {
+	st.Session = &store.Session{OpenedAt: now, LastGameSeen: now, LastSeen: now, OpenedBy: who}
 }
 
 // Touch, izleyici listedeki bir seyi gordugunde cagrilir. realGame false

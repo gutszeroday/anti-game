@@ -19,17 +19,26 @@ type Session struct {
 	// LastSeen, baslatici dahil listedeki herhangi bir seyin en son
 	// gorulme anidir.
 	LastSeen time.Time `json:"last_seen"`
+	// OpenedBy, oturumu acan kisinin ID'sidir. Kurtarma koduyla acilan
+	// oturumda bostur. Oyun sureleri bu kisiye yazilir.
+	OpenedBy string `json:"opened_by,omitempty"`
 }
 
 type State struct {
-	LastTOTPCounter uint64     `json:"last_totp_counter"`
-	FailCount       int        `json:"fail_count"`
-	LockUntil       *time.Time `json:"lock_until"`
-	Session         *Session   `json:"session"`
-	Heartbeat       time.Time  `json:"heartbeat"`
-	RecoveryHash    string     `json:"recovery_hash"`
-	RecoverySalt    string     `json:"recovery_salt"`
-	RecoveryUsed    bool       `json:"recovery_used"`
+	// LastTOTPCounter, tek kisilik donemden kalir; LoadState onu
+	// TOTPCounters'a tasir ve sifirlar.
+	LastTOTPCounter uint64 `json:"last_totp_counter,omitempty"`
+	// TOTPCounters, kisi basina en son kullanilan sayaci tutar. Ortak tek
+	// sayac, bir kisinin kullandigi kodun digerinin kodunu "kullanilmis"
+	// saymasina yol acardi.
+	TOTPCounters map[string]uint64 `json:"totp_counters,omitempty"`
+	FailCount    int               `json:"fail_count"`
+	LockUntil    *time.Time        `json:"lock_until"`
+	Session      *Session          `json:"session"`
+	Heartbeat    time.Time         `json:"heartbeat"`
+	RecoveryHash string            `json:"recovery_hash"`
+	RecoverySalt string            `json:"recovery_salt"`
+	RecoveryUsed bool              `json:"recovery_used"`
 }
 
 const stateFile = "state.json"
@@ -46,8 +55,30 @@ func LoadState(dir string) (*State, error) {
 	if err := json.Unmarshal(b, &s); err != nil {
 		return nil, err
 	}
+	// Tek kisilik donemin sayaci ilk kisiye devredilir. Devirden sonra
+	// eski alan sifirlanir; yoksa her okuma, ilerlemis sayacin uzerine
+	// eski degeri yazar ve kullanilmis bir kod yeniden gecerli olurdu.
+	if len(s.TOTPCounters) == 0 && s.LastTOTPCounter > 0 {
+		s.TOTPCounters = map[string]uint64{"p1": s.LastTOTPCounter}
+	}
+	s.LastTOTPCounter = 0
 	return &s, nil
 }
+
+// Counter, kisinin en son kullandigi TOTP sayacini dondurur.
+func (s *State) Counter(id string) uint64 { return s.TOTPCounters[id] }
+
+// SetCounter, kisinin sayacini gunceller.
+func (s *State) SetCounter(id string, v uint64) {
+	if s.TOTPCounters == nil {
+		s.TOTPCounters = map[string]uint64{}
+	}
+	s.TOTPCounters[id] = v
+}
+
+// ClearCounter, kisinin sayacini siler. Anahtar yenilendiginde cagrilir:
+// eski yuksek sayac, yeni anahtarin uretecegi kodlari reddederdi.
+func (s *State) ClearCounter(id string) { delete(s.TOTPCounters, id) }
 
 // SaveState, once gecici dosyaya yazip yer degistirerek atomik yazar.
 // os.Rename Windows'ta MOVEFILE_REPLACE_EXISTING kullanir, yani yarim

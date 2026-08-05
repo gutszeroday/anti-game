@@ -27,13 +27,21 @@ type Outcome struct {
 	Message     string
 	LockedUntil time.Time
 	Remaining   int
+	// Who, kodu kabul edilen kisinin ID'sidir. Kurtarma kodunda bostur.
+	Who string
+}
+
+// Key, bir kisinin TOTP anahtaridir.
+type Key struct {
+	ID     string
+	Secret []byte
 }
 
 type Verifier struct {
-	Dir    string
-	Secret []byte
-	Grace  time.Duration
-	Now    func() time.Time
+	Dir   string
+	Keys  []Key
+	Grace time.Duration
+	Now   func() time.Time
 }
 
 func (v Verifier) now() time.Time {
@@ -84,19 +92,27 @@ func (v Verifier) Attempt(code string) (Outcome, error) {
 
 	if ok := v.tryRecovery(st, code); ok {
 		st.RecoveryUsed = true
-		return v.succeed(st, now, "recovery", "Kurtarma kodu kabul edildi. Oyunu şimdi başlatabilirsiniz.")
+		return v.succeed(st, now, "", "recovery", "Kurtarma kodu kabul edildi. Oyunu şimdi başlatabilirsiniz.")
 	}
 
-	counter, res := totp.Verify(v.Secret, code, now, st.LastTOTPCounter)
-	switch res {
-	case totp.ResultOK:
-		st.LastTOTPCounter = counter
-		return v.succeed(st, now, "totp", "Kod kabul edildi. Oyunu şimdi başlatabilirsiniz.")
-	case totp.ResultReplay:
-		return v.fail(st, now, "Bu kod daha önce kullanılmış. Arkadaşınızdan yeni kod isteyin.")
-	default:
-		return v.fail(st, now, "Kod hatalı.")
+	// Anahtarlarin tamami denenir, ilk eslesmede cikilmaz: bir anahtar
+	// "kullanilmis kod" derken bir baskasi ayni kodu kabul edebilir ve
+	// erken cikis kullaniciya yanlis gerekce gosterirdi.
+	replay := false
+	for _, k := range v.Keys {
+		counter, res := totp.Verify(k.Secret, code, now, st.Counter(k.ID))
+		switch res {
+		case totp.ResultOK:
+			st.SetCounter(k.ID, counter)
+			return v.succeed(st, now, k.ID, "totp", "Kod kabul edildi. Oyunu şimdi başlatabilirsiniz.")
+		case totp.ResultReplay:
+			replay = true
+		}
 	}
+	if replay {
+		return v.fail(st, now, "Bu kod daha önce kullanılmış. Arkadaşınızdan yeni kod isteyin.")
+	}
+	return v.fail(st, now, "Kod hatalı.")
 }
 
 func (v Verifier) tryRecovery(st *store.State, code string) bool {
@@ -107,17 +123,17 @@ func (v Verifier) tryRecovery(st *store.State, code string) bool {
 	return subtle.ConstantTimeCompare([]byte(want), []byte(st.RecoveryHash)) == 1
 }
 
-func (v Verifier) succeed(st *store.State, now time.Time, method, msg string) (Outcome, error) {
+func (v Verifier) succeed(st *store.State, now time.Time, who, method, msg string) (Outcome, error) {
 	st.FailCount = 0
 	st.LockUntil = nil
-	session.Open(st, now)
+	session.Open(st, now, who)
 	if err := store.SaveState(v.Dir, st); err != nil {
 		return Outcome{}, err
 	}
-	if err := store.Append(v.Dir, store.Event{TS: now, Ev: "unlock", Method: method}); err != nil {
+	if err := store.Append(v.Dir, store.Event{TS: now, Ev: "unlock", Method: method, Who: who}); err != nil {
 		return Outcome{}, err
 	}
-	return Outcome{OK: true, Message: msg, Remaining: attemptsPerLevel}, nil
+	return Outcome{OK: true, Message: msg, Remaining: attemptsPerLevel, Who: who}, nil
 }
 
 func (v Verifier) fail(st *store.State, now time.Time, msg string) (Outcome, error) {

@@ -210,3 +210,78 @@ func TestAggregateWithNoEventsIsSafe(t *testing.T) {
 		t.Errorf("bos girdi bos ozet uretmeliydi: %+v", s)
 	}
 }
+
+func TestPersonTotalsSplitTimeByWhoOpenedTheDoor(t *testing.T) {
+	now := time.Date(2026, 8, 5, 12, 0, 0, 0, time.UTC)
+	cfg := &config.Config{People: []config.Person{
+		{ID: "p1", Name: "Baran"},
+		{ID: "p2", Name: "Ali"},
+	}}
+	ev := []store.Event{
+		{TS: now, Ev: "unlock", Method: "totp", Who: "p1"},
+		{TS: now, Ev: "game_end", Exe: "VALORANT-Win64-Shipping.exe", DurS: 3600, Who: "p1"},
+		{TS: now, Ev: "unlock", Method: "totp", Who: "p2"},
+		{TS: now, Ev: "game_end", Exe: "VALORANT-Win64-Shipping.exe", DurS: 1800, Who: "p2"},
+		{TS: now, Ev: "unlock", Method: "totp", Who: "p2"},
+	}
+	s := Aggregate(ev, cfg, now, time.UTC)
+
+	if len(s.People) != 2 {
+		t.Fatalf("iki kisi bekleniyordu: %+v", s.People)
+	}
+	if s.People[0].Name != "Baran" || s.People[0].DurS != 3600 || s.People[0].Unlocks != 1 {
+		t.Errorf("ilk satir yanlis: %+v", s.People[0])
+	}
+	if s.People[1].Name != "Ali" || s.People[1].DurS != 1800 || s.People[1].Unlocks != 2 {
+		t.Errorf("ikinci satir yanlis: %+v", s.People[1])
+	}
+}
+
+func TestRemovedPersonKeepsPastTime(t *testing.T) {
+	now := time.Date(2026, 8, 5, 12, 0, 0, 0, time.UTC)
+	cfg := &config.Config{}
+	ev := []store.Event{
+		{TS: now, Ev: "game_end", Exe: "LoR.exe", DurS: 600, Who: "p7"},
+	}
+	s := Aggregate(ev, cfg, now, time.UTC)
+	if len(s.People) != 1 || s.People[0].Name != "p7 (silinmiş)" || s.People[0].DurS != 600 {
+		t.Errorf("silinen kisinin suresi kayboldu: %+v", s.People)
+	}
+}
+
+func TestTimeWithoutGateIsGroupedSeparately(t *testing.T) {
+	now := time.Date(2026, 8, 5, 12, 0, 0, 0, time.UTC)
+	ev := []store.Event{
+		{TS: now, Ev: "game_end", Exe: "LoR.exe", DurS: 900},
+	}
+	s := Aggregate(ev, &config.Config{}, now, time.UTC)
+	if len(s.People) != 1 || s.People[0].Name != "Kapı yokken" {
+		t.Errorf("sahipsiz sure ayri satirda toplanmadi: %+v", s.People)
+	}
+}
+
+// Kurtarma kodu bir kisiye ait degil; acma sayisini kimseye yazmamali.
+func TestRecoveryUnlockIsNotCountedForAnyPerson(t *testing.T) {
+	now := time.Date(2026, 8, 5, 12, 0, 0, 0, time.UTC)
+	ev := []store.Event{
+		{TS: now, Ev: "unlock", Method: "recovery"},
+	}
+	s := Aggregate(ev, &config.Config{}, now, time.UTC)
+	if len(s.People) != 0 {
+		t.Errorf("kurtarma kodu kisi satiri urretti: %+v", s.People)
+	}
+}
+
+func TestLauncherTimeIsNotChargedToPerson(t *testing.T) {
+	now := time.Date(2026, 8, 5, 12, 0, 0, 0, time.UTC)
+	cfg := config.Default()
+	cfg.People = []config.Person{{ID: "p1", Name: "Baran"}}
+	ev := []store.Event{
+		{TS: now, Ev: "game_end", Exe: "RiotClientServices.exe", DurS: 7200, Who: "p1"},
+		{TS: now, Ev: "game_end", Exe: "VALORANT-Win64-Shipping.exe", DurS: 600, Who: "p1"},
+	}
+	s := Aggregate(ev, cfg, now, time.UTC)
+	if len(s.People) != 1 || s.People[0].DurS != 600 {
+		t.Errorf("baslatici suresi kisiye yazildi: %+v", s.People)
+	}
+}

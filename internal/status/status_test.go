@@ -44,7 +44,7 @@ func TestClosedSessionSaysCodeNeeded(t *testing.T) {
 
 func TestOpenSessionShowsRemainingGrace(t *testing.T) {
 	s := withState(t, func(st *store.State) {
-		session.Open(st, t0.Add(-4*time.Minute))
+		session.Open(st, t0.Add(-4*time.Minute), "")
 	})
 	if !strings.Contains(s, "açık") {
 		t.Errorf("oturum acik oldugu soylenmedi:\n%s", s)
@@ -57,7 +57,7 @@ func TestOpenSessionShowsRemainingGrace(t *testing.T) {
 
 func TestExpiredSessionCountsAsClosed(t *testing.T) {
 	s := withState(t, func(st *store.State) {
-		session.Open(st, t0.Add(-30*time.Minute))
+		session.Open(st, t0.Add(-30*time.Minute), "")
 	})
 	if !strings.Contains(s, "kapalı") {
 		t.Errorf("suresi dolmus oturum acik sayildi:\n%s", s)
@@ -95,5 +95,27 @@ func TestMissingDataDirIsNotAnError(t *testing.T) {
 	// Kurulum yapilmamis makinede tepsi menusu yine acilabilmeli.
 	if _, err := Text(t.TempDir(), t0); err != nil {
 		t.Fatalf("kurulumsuz dizinde hata: %v", err)
+	}
+}
+
+func TestStatusNamesWhoOpenedTheSession(t *testing.T) {
+	dir := t.TempDir()
+	cfg := config.Default()
+	cfg.People = []config.Person{{ID: "p1", Name: "Baran"}}
+	if err := config.Save(dir, cfg); err != nil {
+		t.Fatal(err)
+	}
+	st := &store.State{}
+	session.Open(st, t0, "p1")
+	if err := store.SaveState(dir, st); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := Text(dir, t0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(got, "Baran açtı") {
+		t.Errorf("oturumu acan kisi yazilmadi:\n%s", got)
 	}
 }

@@ -3,9 +3,11 @@
 package gate
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/guts/antigame/internal/auth"
+	"github.com/guts/antigame/internal/config"
 )
 
 func TestSingleInstanceBlocksSecondGate(t *testing.T) {
@@ -59,5 +61,53 @@ func TestCheckWithoutVerifierReturnsError(t *testing.T) {
 	p := Params{AppName: "Valorant"}
 	if _, err := p.check("123456"); err == nil {
 		t.Fatal("Verify tanimsizken hata beklendi")
+	}
+}
+
+func TestAskLineListsPeopleWithHints(t *testing.T) {
+	got := AskLine([]config.Person{
+		{ID: "p1", Name: "Baran", Hint: "WhatsApp"},
+		{ID: "p2", Name: "Ali"},
+	})
+	want := "Kod kimde: Baran (WhatsApp), Ali"
+	if got != want {
+		t.Errorf("beklenen %q, gelen %q", want, got)
+	}
+}
+
+func TestAskLineTruncatesLongList(t *testing.T) {
+	var ps []config.Person
+	for _, n := range []string{"Baran", "Ali", "Ayşe", "Can", "Deniz"} {
+		ps = append(ps, config.Person{Name: n})
+	}
+	got := AskLine(ps)
+	if !strings.Contains(got, "ve 2 kişi daha") {
+		t.Errorf("uzun liste kirpilmadi: %q", got)
+	}
+	if strings.Contains(got, "Deniz") {
+		t.Errorf("kirpilmis isim hala yaziliyor: %q", got)
+	}
+}
+
+func TestAskLineWithoutPeopleFallsBack(t *testing.T) {
+	if got := AskLine(nil); got != "Kodu arkadaşınızdan isteyin." {
+		t.Errorf("bos listede varsayilan metin yok: %q", got)
+	}
+}
+
+func TestAskLineDropsHintsWhenLineIsTooLong(t *testing.T) {
+	ps := []config.Person{
+		{Name: "Baran Yılmaz", Hint: "WhatsApp 0555 111 22 33"},
+		{Name: "Ali Kaya", Hint: "Telegram @alikaya"},
+		{Name: "Ayşe Demir", Hint: "Instagram @aysedemir"},
+	}
+	got := AskLine(ps)
+	if strings.Contains(got, "WhatsApp") {
+		t.Errorf("tasan satirda notlar dusurulmedi: %q", got)
+	}
+	for _, name := range []string{"Baran Yılmaz", "Ali Kaya", "Ayşe Demir"} {
+		if !strings.Contains(got, name) {
+			t.Errorf("%s satirdan dustu: %q", name, got)
+		}
 	}
 }

@@ -25,6 +25,10 @@ type Event struct {
 	ActiveS int       `json:"active_s,omitempty"`
 	Method  string    `json:"method,omitempty"`
 	Fails   int       `json:"fails,omitempty"`
+	// Who, olayin ait oldugu kisinin ID'sidir: kapiyi acan kisi, ya da
+	// oyun bittiginde o oturumu acmis olan kisi. Kapi kurulmadan
+	// kaydedilen surelerde bostur.
+	Who string `json:"who,omitempty"`
 }
 
 func monthFile(dir string, t time.Time) string {

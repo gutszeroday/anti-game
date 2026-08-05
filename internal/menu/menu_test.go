@@ -99,3 +99,17 @@ func TestEmptyInputExitsCleanly(t *testing.T) {
 		{Key: "1", Label: "Kurulum", Run: func() error { t.Fatal("girdi yokken eylem calisti"); return nil }},
 	})
 }
+
+// Windows'ta yonlendirilmis metin BOM'la baslayabiliyor; ilk secim her
+// zaman "gecersiz secim" olarak reddediliyordu.
+func TestChoiceWithByteOrderMarkIsAccepted(t *testing.T) {
+	ran := false
+	items := []Item{{Key: "1", Label: "Test", Run: func() error { ran = true; return nil }}}
+	var out bytes.Buffer
+	if err := Run(strings.NewReader("\ufeff1\n0\n"), &out, nil, items); err != nil {
+		t.Fatal(err)
+	}
+	if !ran {
+		t.Errorf("BOM'lu secim reddedildi:\n%s", out.String())
+	}
+}
