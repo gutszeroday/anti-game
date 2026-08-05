@@ -40,6 +40,12 @@ type Config struct {
 
 const fileName = "config.json"
 
+// FilePath, ayar dosyasinin tam yolunu dondurur. Izleyici dosyanin degisip
+// degismedigini kendi basina yoklayabilsin diye disari aciliyor.
+func FilePath(dir string) string {
+	return filepath.Join(dir, fileName)
+}
+
 // Dir, kalici veri dizinini dondurur: %LOCALAPPDATA%\antigame
 func Dir() string {
 	return filepath.Join(os.Getenv("LOCALAPPDATA"), "antigame")
@@ -47,16 +53,23 @@ func Dir() string {
 
 func Default() *Config {
 	return &Config{
+		// Riot tarafinda istemci tek bir process degil: servis, Electron
+		// arayuz ve LoL arayuzu ayri ayri calisir. Yalnizca servis
+		// oldurulurse ayakta kalan arayuz onu yeniden dogurur, bu yuzden
+		// ailenin tamami listede olmak zorunda.
 		Gated: []Game{
 			{Name: "Riot Client", Exe: "RiotClientServices.exe", Launcher: true},
+			{Name: "Riot Client (Arayüz)", Exe: "Riot Client.exe", Launcher: true},
+			{Name: "Riot Client (Çökme)", Exe: "RiotClientCrashHandler.exe", Launcher: true},
 			{Name: "League of Legends", Exe: "LeagueClient.exe", Launcher: true},
+			{Name: "League of Legends (Arayüz)", Exe: "LeagueClientUx.exe", Launcher: true},
 			{Name: "League of Legends (Oyun)", Exe: "League of Legends.exe"},
 			{Name: "Valorant Başlatıcı", Exe: "VALORANT.exe", Launcher: true},
 			{Name: "Valorant", Exe: "VALORANT-Win64-Shipping.exe"},
 			{Name: "Legends of Runeterra", Exe: "LoR.exe"},
 		},
 		GraceMinutes:          10,
-		LauncherWindowMinutes: 45,
+		LauncherWindowMinutes: 10,
 		PollMS:                250,
 		FocusSampleS:          5,
 		IdleThresholdS:        300,
@@ -74,7 +87,7 @@ func Default() *Config {
 // oyun oturumu tazelemedigi icin oynarken oturum duser ve oyun kapatilir.
 func Load(dir string) (*Config, error) {
 	d := Default()
-	b, err := os.ReadFile(filepath.Join(dir, fileName))
+	b, err := os.ReadFile(FilePath(dir))
 	if os.IsNotExist(err) {
 		return d, nil
 	}
@@ -107,7 +120,31 @@ func Load(dir string) (*Config, error) {
 	if c.IdleThresholdS <= 0 {
 		c.IdleThresholdS = d.IdleThresholdS
 	}
+	forceKnownLauncherFlags(c.Gated, d.Gated)
 	return &c, nil
+}
+
+// forceKnownLauncherFlags, varsayilan listede adi gecen exe'ler icin
+// dosyadaki launcher degerini yok sayar ve varsayilani dayatir.
+//
+// Alan omitempty tasidigi icin "yazilmamis" ile "false" ayirt edilemiyor:
+// bayragi kaybetmis bir config.json kendi kendini onaramaz. Bu, izleyicinin
+// Riot Client'i gercek oyun sanmasina ve tepside acik duran istemcinin
+// oturumu sonsuza kadar tazelemesine yol aciyordu.
+//
+// Ayni zamanda bir guvenlik ozelligi: bilinen bir baslaticinin baslatici
+// oldugu config.json elle duzenlenerek kaldirilamaz. Kullanicinin kendi
+// ekledigi oyunlara dokunulmaz.
+func forceKnownLauncherFlags(gated, defaults []Game) {
+	known := make(map[string]bool, len(defaults))
+	for _, d := range defaults {
+		known[strings.ToLower(filepath.Base(d.Exe))] = d.Launcher
+	}
+	for i := range gated {
+		if l, ok := known[strings.ToLower(filepath.Base(gated[i].Exe))]; ok {
+			gated[i].Launcher = l
+		}
+	}
 }
 
 func Save(dir string, c *Config) error {
@@ -118,7 +155,7 @@ func Save(dir string, c *Config) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(filepath.Join(dir, fileName), b, 0o600)
+	return os.WriteFile(FilePath(dir), b, 0o600)
 }
 
 // Match, verilen process'in kapida durdurulmasi gerekip gerekmedigini soyler.

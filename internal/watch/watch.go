@@ -7,6 +7,7 @@ package watch
 
 import (
 	"context"
+	"os"
 	"strings"
 	"time"
 
@@ -26,6 +27,10 @@ const (
 	// kapaliydi" araliklarini bulabilmesi icin gunluge de iz gerekiyor.
 	// Gunde ~144 satir, ihmal edilebilir.
 	hbEventEvery = 10 * time.Minute
+	// configCheckEvery, config.json'un degisip degismedigine bakma araligidir.
+	// Her turda (250 ms) stat cagirmak gereksiz; listeye eklenen bir oyunun
+	// bes saniye icinde kapiya girmesi yeterince hizli.
+	configCheckEvery = 5 * time.Second
 )
 
 type Options struct {
@@ -68,6 +73,10 @@ type Watcher struct {
 	lastGate      time.Time
 	lastHBEvent   time.Time
 
+	lastCfgCheck time.Time
+	cfgMod       time.Time
+	cfgSize      int64
+
 	usageExe    string
 	usageDurS   int
 	usageActive int
@@ -75,32 +84,80 @@ type Watcher struct {
 }
 
 func New(o Options) (*Watcher, error) {
-	// Tam yol yalnizca sabitleme yapilmis exe adlari icin sorgulanir;
-	// aksi halde her turda her process icin OpenProcess cagrilirdi.
-	pinned := make(map[string]bool)
-	for _, g := range o.Cfg.Gated {
-		if g.Path != "" {
-			pinned[strings.ToLower(g.Exe)] = true
-		}
-	}
 	st, err := store.LoadState(o.Dir)
 	if err != nil {
 		return nil, err
 	}
+	w := &Watcher{
+		o:       o,
+		st:      st,
+		running: make(map[int]*tracked),
+	}
+	w.applyConfig(o.Cfg)
+	return w, nil
+}
+
+// applyConfig, yapilandirmayi ve ondan turetilen alanlari birlikte kurar.
+// Turetilenler ayri kalirsa yeniden yuklemede biri guncellenip digeri eski
+// degeriyle kalabilir.
+func (w *Watcher) applyConfig(cfg *config.Config) {
+	// Tam yol yalnizca sabitleme yapilmis exe adlari icin sorgulanir;
+	// aksi halde her turda her process icin OpenProcess cagrilirdi.
+	pinned := make(map[string]bool)
+	for _, g := range cfg.Gated {
+		if g.Path != "" {
+			pinned[strings.ToLower(g.Exe)] = true
+		}
+	}
 	// Eski config.json'da bu alan yok; sifir birakilirsa oturum hic
 	// acilamazdi.
-	launcherWindow := time.Duration(o.Cfg.LauncherWindowMinutes) * time.Minute
+	launcherWindow := time.Duration(cfg.LauncherWindowMinutes) * time.Minute
 	if launcherWindow <= 0 {
 		launcherWindow = 45 * time.Minute
 	}
-	return &Watcher{
-		o:              o,
-		grace:          time.Duration(o.Cfg.GraceMinutes) * time.Minute,
-		launcherWindow: launcherWindow,
-		pinned:         pinned,
-		st:             st,
-		running:        make(map[int]*tracked),
-	}, nil
+	w.o.Cfg = cfg
+	w.pinned = pinned
+	w.grace = time.Duration(cfg.GraceMinutes) * time.Minute
+	w.launcherWindow = launcherWindow
+}
+
+// reloadConfig, config.json degistiyse listeyi yeniden okur.
+//
+// Listeyi menu ve tepsi degistirir, ama onlar ayri process. Izleyici ayari
+// yalnizca acilista okursa sonradan eklenen oyun ancak izleyici yeniden
+// baslatilinca kapida durur; kullanici listede gordugu oyunu korumasiz
+// oynar. Degisiklik boyut+mtime ile anlasiliyor, icerik her turda okunmuyor.
+//
+// PollMS burada etkisini gostermez: dongu saati Run icinde bir kez kurulur.
+func (w *Watcher) reloadConfig(now time.Time) error {
+	if !w.lastCfgCheck.IsZero() && now.Sub(w.lastCfgCheck) < configCheckEvery {
+		return nil
+	}
+	w.lastCfgCheck = now
+
+	fi, err := os.Stat(config.FilePath(w.o.Dir))
+	if err != nil {
+		// Dosya yoksa veya okunamiyorsa bellektekini korumak tek dogru
+		// davranis: varsayilana donmek kullanicinin listesini sessizce
+		// degistirirdi.
+		return nil
+	}
+	if fi.ModTime().Equal(w.cfgMod) && fi.Size() == w.cfgSize {
+		return nil
+	}
+	cfg, err := config.Load(w.o.Dir)
+	if err != nil {
+		// Yarim yazilmis dosya bir sonraki turda tekrar denenir.
+		return nil
+	}
+	first := w.cfgMod.IsZero()
+	w.cfgMod, w.cfgSize = fi.ModTime(), fi.Size()
+	w.applyConfig(cfg)
+	if first {
+		// Acilistaki ilk okuma degisiklik degil.
+		return nil
+	}
+	return store.Append(w.o.Dir, store.Event{TS: now, Ev: "config_reload"})
 }
 
 // Reload, durumu diskten yeniden okur. Kapi penceresi ayri bir process
@@ -122,6 +179,11 @@ func (w *Watcher) Step(now time.Time) error {
 		if err := store.Append(w.o.Dir, store.Event{TS: now, Ev: "watch_start"}); err != nil {
 			return err
 		}
+	}
+
+	// Liste process disinda degismis olabilir; taramadan once tazelenir.
+	if err := w.reloadConfig(now); err != nil {
+		return err
 	}
 
 	procs, err := w.o.List()

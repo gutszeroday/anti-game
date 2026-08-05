@@ -391,6 +391,86 @@ func TestLauncherLeftOpenEventuallyRelocksGate(t *testing.T) {
 	}
 }
 
+// Riot istemcisi tek process degil. Servis oldurulup Electron arayuz ayakta
+// kalirsa arayuz servisi yeniden dogurur ve kapi delinir; bu yuzden oturum
+// dustugunde ailenin tamami gitmeli. Test varsayilan liste uzerinden gider:
+// aileden biri Default()'tan dusurulurse burada yakalanir.
+func TestWholeRiotFamilyIsTerminatedWhenSessionExpires(t *testing.T) {
+	family := []winproc.Proc{
+		{PID: 1, Exe: "RiotClientServices.exe"},
+		{PID: 2, Exe: "Riot Client.exe"},
+		{PID: 3, Exe: "Riot Client.exe"},
+		{PID: 4, Exe: "RiotClientCrashHandler.exe"},
+		{PID: 5, Exe: "LeagueClient.exe"},
+		{PID: 6, Exe: "LeagueClientUx.exe"},
+		{PID: 7, Exe: "League of Legends.exe"},
+	}
+	f := &fakes{procs: append([]winproc.Proc(nil), family...)}
+	w, _ := newWatcher(t, f)
+	w.o.Cfg.Gated = config.Default().Gated
+
+	// Oturum yok: her tur kapida duran her sey sonlandirilmali.
+	if err := w.Step(t0); err != nil {
+		t.Fatal(err)
+	}
+
+	killed := map[int]bool{}
+	for _, pid := range f.killed {
+		killed[pid] = true
+	}
+	for _, p := range family {
+		if !killed[p.PID] {
+			t.Errorf("%s (PID %d) sonlandirilmadi: ayakta kalan surec kapiyi deler",
+				p.Exe, p.PID)
+		}
+	}
+}
+
+// Baslatici penceresi dolunca aile birlikte gitmeli: kullanici oyundan
+// cikip istemciyi acik biraktiginda sure dolunca Riot Client da kapanir.
+func TestFamilyClosesAfterLauncherWindowExpires(t *testing.T) {
+	f := &fakes{}
+	w, dir := newWatcher(t, f)
+	w.o.Cfg.Gated = config.Default().Gated
+	w.launcherWindow = 10 * time.Minute
+
+	st, _ := store.LoadState(dir)
+	session.Open(st, t0)
+	store.SaveState(dir, st)
+	w.Reload()
+
+	// Mac oynaniyor: oyun ve istemci birlikte calisiyor.
+	f.procs = []winproc.Proc{
+		{PID: 1, Exe: "RiotClientServices.exe"},
+		{PID: 5, Exe: "LeagueClient.exe"},
+		{PID: 7, Exe: "League of Legends.exe"},
+	}
+	if err := w.Step(t0); err != nil {
+		t.Fatal(err)
+	}
+
+	// Mac bitti, yalnizca istemci acik kaldi.
+	f.procs = []winproc.Proc{
+		{PID: 1, Exe: "RiotClientServices.exe"},
+		{PID: 5, Exe: "LeagueClient.exe"},
+	}
+	for i := 1; i <= 9; i++ {
+		if err := w.Step(t0.Add(time.Duration(i) * time.Minute)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if len(f.killed) != 0 {
+		t.Fatalf("pencere dolmadan istemci oldurüldu: %v", f.killed)
+	}
+
+	if err := w.Step(t0.Add(11 * time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	if len(f.killed) != 2 {
+		t.Errorf("pencere dolunca istemci ailesi kapanmadi, oldurulen: %v", f.killed)
+	}
+}
+
 func TestLauncherKeepsSessionAliveBetweenMatches(t *testing.T) {
 	// Mac arasinda yalnizca istemci calisir; oturum burada dusmemeli,
 	// yoksa yeni mac yuklenirken oyun oldurulur.
@@ -422,6 +502,52 @@ func TestLauncherKeepsSessionAliveBetweenMatches(t *testing.T) {
 	}
 	if len(f.killed) != 0 {
 		t.Errorf("mac arasindan sonra baslayan oyun oldurüldu: %v", f.killed)
+	}
+}
+
+// Menu veya tepsi listeye oyun eklediginde config.json degisir ama izleyici
+// ayri bir process'tir. Ayari yalnizca acilista okursa, eklenen oyun ancak
+// izleyici yeniden baslatildiginda kapida durur; kullanici bunu bilmeden
+// korumasiz oynamis olur.
+func TestPicksUpGameAddedToConfigWhileRunning(t *testing.T) {
+	f := &fakes{}
+	w, dir := newWatcher(t, f)
+
+	if err := w.Step(t0); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := config.Default()
+	cfg.Gated = []config.Game{
+		{Name: "Valorant", Exe: "VALORANT.exe"},
+		{Name: "Palworld", Exe: "Palworld.exe"},
+	}
+	if err := config.Save(dir, cfg); err != nil {
+		t.Fatal(err)
+	}
+
+	f.procs = []winproc.Proc{{PID: 99, Exe: "Palworld.exe"}}
+	if err := w.Step(t0.Add(configCheckEvery)); err != nil {
+		t.Fatal(err)
+	}
+	if len(f.killed) != 1 || f.killed[0] != 99 {
+		t.Fatalf("sonradan eklenen oyun durdurulmadi: %v", f.killed)
+	}
+}
+
+// Ayar dosyasi yoksa (testler ve ilk calistirma) bellekteki yapilandirma
+// varsayilanla ezilmemeli.
+func TestKeepsConfigWhenFileMissing(t *testing.T) {
+	f := &fakes{procs: []winproc.Proc{{PID: 7, Exe: "LeagueClient.exe"}}}
+	w, _ := newWatcher(t, f)
+
+	if err := w.Step(t0); err != nil {
+		t.Fatal(err)
+	}
+	// newWatcher yalnizca VALORANT.exe'yi kapiya koyar; varsayilan liste
+	// yuklenmis olsaydi LeagueClient de durdurulurdu.
+	if len(f.killed) != 0 {
+		t.Fatalf("liste varsayilanla ezildi: %v", f.killed)
 	}
 }
 

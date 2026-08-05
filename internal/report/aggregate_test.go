@@ -65,6 +65,81 @@ func TestHoursSpreadAcrossSessionSpan(t *testing.T) {
 	}
 }
 
+// Baslaticilar da game_start/game_end yaziyor. Sayilirlarsa bir mac hem
+// oyun hem istemci hem arayuz olarak ust uste toplanir: olculen sisme
+// 3.83 saatlik oyunu 10.65 saat gosteriyordu.
+func TestLaunchersAreNotCountedAsPlaytime(t *testing.T) {
+	c := &config.Config{Gated: []config.Game{
+		{Name: "Riot Client", Exe: "RiotClientServices.exe", Launcher: true},
+		{Name: "League of Legends (Oyun)", Exe: "League of Legends.exe"},
+	}}
+	ev := []store.Event{
+		{TS: at(4, 21), Ev: "game_end", Exe: "League of Legends.exe", Name: "LoL", DurS: 1800},
+		{TS: at(4, 21), Ev: "game_end", Exe: "RiotClientServices.exe", Name: "Riot Client", DurS: 7200},
+	}
+
+	s := Aggregate(ev, c, at(5, 12), loc)
+
+	if s.TotalS != 1800 {
+		t.Errorf("toplam %d, 1800 olmaliydi: baslatici suresi sayilmis", s.TotalS)
+	}
+	for _, g := range s.Games {
+		if g.Exe == "RiotClientServices.exe" {
+			t.Error("baslatici oyun tablosunda gorunuyor")
+		}
+	}
+	var dayTotal, hourTotal int
+	for _, d := range s.Days {
+		dayTotal += d.DurS
+	}
+	for _, h := range s.Hours {
+		hourTotal += h
+	}
+	if dayTotal != 1800 {
+		t.Errorf("gunluk dagilim %d, 1800 olmaliydi", dayTotal)
+	}
+	if hourTotal != 1800 {
+		t.Errorf("saat dagilimi %d, 1800 olmaliydi", hourTotal)
+	}
+}
+
+// Listeden sonradan cikarilan bir oyunun gecmis suresi rapordan silinmemeli.
+func TestUnlistedExeStillCountsAsPlaytime(t *testing.T) {
+	ev := []store.Event{
+		{TS: at(4, 21), Ev: "game_end", Exe: "EskiOyun.exe", Name: "Eski Oyun", DurS: 900},
+	}
+	s := Aggregate(ev, cfg(), at(5, 12), loc)
+	if s.TotalS != 900 {
+		t.Errorf("toplam %d, 900 olmaliydi: listede olmayan oyun dusurulmus", s.TotalS)
+	}
+}
+
+// Gunlukteki zaman damgalari saniye altini da tasir. Bir oturum saat
+// basini kesirli bir kalanla asarsa dagitim adimi sifira yuvarlanip
+// donguyu ilerletmez hale gelebilir; rapor o noktada kilitlenir.
+func TestHoursSpreadTerminatesOnSubSecondTimestamps(t *testing.T) {
+	ev := []store.Event{
+		{TS: at(4, 8).Add(9900898 * time.Nanosecond), Ev: "game_end",
+			Exe: "VALORANT.exe", DurS: 3 * 3600},
+	}
+
+	done := make(chan Summary, 1)
+	go func() { done <- Aggregate(ev, cfg(), at(5, 12), loc) }()
+
+	select {
+	case s := <-done:
+		var total int
+		for _, h := range s.Hours {
+			total += h
+		}
+		if total != 3*3600 {
+			t.Errorf("saatlere dagitilan sure %d, 10800 olmaliydi: %v", total, s.Hours)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("Aggregate donmedi: saat dagitimi sonsuz donguye girdi")
+	}
+}
+
 func TestGapsDetectedFromMissingHeartbeats(t *testing.T) {
 	ev := []store.Event{
 		{TS: at(3, 10), Ev: "hb"},

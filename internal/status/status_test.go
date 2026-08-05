@@ -1,6 +1,7 @@
 package status
 
 import (
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -64,9 +65,12 @@ func TestExpiredSessionCountsAsClosed(t *testing.T) {
 }
 
 func TestShowsGatedGameCount(t *testing.T) {
+	// Sayi kaynagindan turetiliyor: listeye oyun eklemek bu testi
+	// kirmamali, yalnizca sayinin hic yazilmamasi kirmali.
 	s := withState(t, nil)
-	if !strings.Contains(s, "6") {
-		t.Errorf("kapidaki oyun sayisi yazilmadi:\n%s", s)
+	want := strconv.Itoa(len(config.Default().Gated))
+	if !strings.Contains(s, want) {
+		t.Errorf("kapidaki oyun sayisi (%s) yazilmadi:\n%s", want, s)
 	}
 }
 

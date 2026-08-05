@@ -26,6 +26,104 @@ func TestDefaultContainsRiotGames(t *testing.T) {
 	}
 }
 
+// Riot ailesi eksik kalirsa sure dolunca servis oldurulur ama ayakta kalan
+// Electron arayuz onu yeniden dogurur ve kapi delinir.
+func TestDefaultCoversWholeRiotProcessFamily(t *testing.T) {
+	want := map[string]bool{
+		"Riot Client.exe":            true,
+		"RiotClientCrashHandler.exe": true,
+		"LeagueClientUx.exe":         true,
+	}
+	got := map[string]bool{}
+	for _, g := range Default().Gated {
+		got[g.Exe] = g.Launcher
+	}
+	for exe, launcher := range want {
+		l, ok := got[exe]
+		if !ok {
+			t.Errorf("varsayilan listede eksik: %s", exe)
+			continue
+		}
+		if l != launcher {
+			t.Errorf("%s icin launcher=%v, %v bekleniyordu", exe, l, launcher)
+		}
+	}
+}
+
+func TestDefaultMarksLaunchersButNotRealGames(t *testing.T) {
+	want := map[string]bool{
+		"RiotClientServices.exe":      true,
+		"LeagueClient.exe":            true,
+		"VALORANT.exe":                true,
+		"League of Legends.exe":       false,
+		"VALORANT-Win64-Shipping.exe": false,
+		"LoR.exe":                     false,
+	}
+	for _, g := range Default().Gated {
+		if l, ok := want[g.Exe]; ok && g.Launcher != l {
+			t.Errorf("%s icin launcher=%v, %v bekleniyordu", g.Exe, g.Launcher, l)
+		}
+	}
+}
+
+// Bozuk config.json'lar launcher alanini hic tasimiyor: omitempty yuzunden
+// "yok" ile "false" ayirt edilemiyor, dosya kendi kendini duzeltemiyor.
+// Bilinen baslaticilarda dosyadaki deger yok sayilmali.
+func TestLoadForcesLauncherFlagOnKnownLaunchers(t *testing.T) {
+	dir := t.TempDir()
+	raw := `{"gated":[
+		{"name":"Riot Client","exe":"RiotClientServices.exe"},
+		{"name":"League of Legends","exe":"LeagueClient.exe"},
+		{"name":"League of Legends (Oyun)","exe":"League of Legends.exe"}
+	]}`
+	if err := os.WriteFile(filepath.Join(dir, fileName), []byte(raw), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	c, err := Load(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		exe  string
+		want bool
+	}{
+		{"RiotClientServices.exe", true},
+		{"LeagueClient.exe", true},
+		{"League of Legends.exe", false},
+	} {
+		g, ok := c.Match(tc.exe, "")
+		if !ok {
+			t.Fatalf("%s listede bulunamadi", tc.exe)
+		}
+		if g.Launcher != tc.want {
+			t.Errorf("%s icin launcher=%v, %v bekleniyordu", tc.exe, g.Launcher, tc.want)
+		}
+	}
+}
+
+// Dayatma yalnizca varsayilan listede adi gecen exe'ler icin gecerli;
+// kullanicinin kendi ekledigi oyuna karisilmaz.
+func TestLoadLeavesUserAddedGameFlagAlone(t *testing.T) {
+	dir := t.TempDir()
+	raw := `{"gated":[{"name":"Steam","exe":"steam.exe","launcher":true}]}`
+	if err := os.WriteFile(filepath.Join(dir, fileName), []byte(raw), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	c, err := Load(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	g, ok := c.Match("steam.exe", "")
+	if !ok {
+		t.Fatal("kullanicinin ekledigi oyun listede yok")
+	}
+	if !g.Launcher {
+		t.Error("kullanicinin ekledigi baslatici bayragi silinmis")
+	}
+}
+
 func TestDefaultTuning(t *testing.T) {
 	c := Default()
 	if c.GraceMinutes != 10 || c.PollMS != 250 || c.FocusSampleS != 5 || c.IdleThresholdS != 300 {
