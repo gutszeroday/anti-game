@@ -37,6 +37,13 @@ func Add(dir, name, exe, path string) error {
 	return add(dir, name, exe, path, false)
 }
 
+// AddLauncher, programi baslatici olarak ekler: kapida durdurulur ama
+// suresi oyun suresi sayilmaz. Riot istemcisi gibi oyunun kendisi
+// olmayan process'ler icin.
+func AddLauncher(dir, name, exe, path string) error {
+	return add(dir, name, exe, path, true)
+}
+
 func add(dir, name, exe, path string, launcher bool) error {
 	exe = strings.TrimSpace(exe)
 	if exe == "" {

@@ -55,9 +55,9 @@ var (
 	procBeginPaint          = user32.NewProc("BeginPaint")
 	procEndPaint            = user32.NewProc("EndPaint")
 	procGetSysColorBrush    = user32.NewProc("GetSysColorBrush")
+	procAdjustWindowRectEx  = user32.NewProc("AdjustWindowRectEx")
 
 	procCreateFontIndirect = gdi32.NewProc("CreateFontIndirectW")
-	procDeleteObject       = gdi32.NewProc("DeleteObject")
 	procStretchDIBits      = gdi32.NewProc("StretchDIBits")
 
 	procInitCommonControlsEx = comctl32.NewProc("InitCommonControlsEx")
@@ -73,14 +73,12 @@ const (
 	wsTabStop          = 0x00010000
 	wsGroup            = 0x00020000
 	wsBorder           = 0x00800000
-	wsVScroll          = 0x00200000
 	wsCaption          = 0x00C00000
 	wsSysMenu          = 0x00080000
 	wsPopup            = 0x80000000
 	wsClipChildren     = 0x02000000
 
 	wsExClientEdge = 0x00000200
-	wsExDlgModal   = 0x00000001
 
 	bsPushButton    = 0x00000000
 	bsDefPushButton = 0x00000001
@@ -90,8 +88,7 @@ const (
 	esNumber      = 0x00002000
 	esCenter      = 0x00000001
 
-	ssLeft      = 0x00000000
-	ssOwnerDraw = 0x0000000D
+	ssLeft = 0x00000000
 
 	lvsReport        = 0x0001
 	lvsSingleSel     = 0x0004
@@ -101,27 +98,23 @@ const (
 
 // Pencere mesajlari.
 const (
-	wmCreate         = 0x0001
-	wmDestroy        = 0x0002
-	wmSize           = 0x0005
-	wmSetFont        = 0x0030
-	wmPaint          = 0x000F
-	wmClose          = 0x0010
-	wmGetMinMaxInfo  = 0x0024
-	wmSetText        = 0x000C
-	wmGetText        = 0x000D
-	wmGetTextLen     = 0x000E
-	wmCommand        = 0x0111
-	wmTimer          = 0x0113
-	wmDpiChanged     = 0x02E0
-	wmCtlColorStatic = 0x0138
+	wmDestroy       = 0x0002
+	wmSize          = 0x0005
+	wmSetFont       = 0x0030
+	wmPaint         = 0x000F
+	wmClose         = 0x0010
+	wmGetMinMaxInfo = 0x0024
+	wmSetText       = 0x000C
+	wmGetText       = 0x000D
+	wmGetTextLen    = 0x000E
+	wmCommand       = 0x0111
+	wmTimer         = 0x0113
+	wmDpiChanged    = 0x02E0
 
 	bmGetCheck = 0x00F0
 	bmSetCheck = 0x00F1
 
 	emSetSel = 0x00B1
-
-	bnClicked = 0
 
 	idOK     = 1
 	idCancel = 2
@@ -136,6 +129,7 @@ const (
 	lvmSetItem          = lvmFirst + 76
 	lvmInsertColumn     = lvmFirst + 97
 	lvmSetExtendedStyle = lvmFirst + 54
+	lvmSetColumnWidth   = lvmFirst + 30
 
 	lvcfWidth   = 0x0002
 	lvcfText    = 0x0004
@@ -153,19 +147,16 @@ const (
 )
 
 const (
-	swShow       = 5
-	swShowNormal = 1
-	swHide       = 0
+	swShow = 5
 
 	swpNoSize     = 0x0001
 	swpNoZOrder   = 0x0004
 	swpNoActivate = 0x0010
 
-	mbIconInfo  = 0x00000040
-	mbIconWarn  = 0x00000030
-	mbIconError = 0x00000010
-	mbYesNo     = 0x00000004
-	idYes       = 6
+	mbIconInfo = 0x00000040
+	mbIconWarn = 0x00000030
+	mbYesNo    = 0x00000004
+	idYes      = 6
 
 	idiApplication = 32512
 	idcArrow       = 32512
@@ -509,6 +500,32 @@ func lvSetRows(hwnd uintptr, rows []Row) {
 			procSendMessage.Call(hwnd, msg, 0, uintptr(unsafe.Pointer(&it)))
 		}
 	}
+}
+
+// lvSetColumnWidths, sutun genisliklerini yeniden olcekler. Pencere
+// baska bir ekrana tasindiginda cagriliyor.
+func lvSetColumnWidths(hwnd uintptr, widths []int32, dpi uint32) {
+	for i, w := range widths {
+		procSendMessage.Call(hwnd, lvmSetColumnWidth, uintptr(i), uintptr(Scale(dpi, w)))
+	}
+}
+
+// applyMinSize, WM_GETMINMAXINFO'nun tasidigi yapiya en kucuk pencere
+// olcusunu yazar. Isleyen bir sinir olmadan pencere kucultuldugunde
+// kontroller ust uste biniyor.
+//
+// go vet burayi "possible misuse of unsafe.Pointer" diye isaretler:
+// uintptr'den pointer'a donusumu genel olarak guvensiz sayiyor. Bu
+// mesajda isaretcinin gecerliligini Windows garanti ediyor ve baska
+// yolu yok. Donusum tek bir yerde tutuluyor ki uyari da tek kalsin.
+func applyMinSize(lparam uintptr, dpi uint32) bool {
+	if lparam == 0 {
+		return false
+	}
+	mm := (*minMaxInfo)(unsafe.Pointer(lparam))
+	mm.MinTrackSize.X = Scale(dpi, MinW)
+	mm.MinTrackSize.Y = Scale(dpi, MinH)
+	return true
 }
 
 // lvSelected, secili satirin sirasini verir; secim yoksa -1.
