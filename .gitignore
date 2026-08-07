@@ -6,6 +6,10 @@
 *.syso
 *.test
 
+# Manifest kaynagi bir derleme ciktisi degil, kaynagin parcasi: repoda
+# durmazsa go build'in once rsrc calistirmasi gerekirdi.
+!cmd/antigame/rsrc_windows_amd64.syso
+
 # Go
 vendor/
 *.out

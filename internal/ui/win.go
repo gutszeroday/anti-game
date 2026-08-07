@@ -4,10 +4,13 @@ package ui
 
 import (
 	"fmt"
+	"runtime/debug"
 	"sync"
 	"unsafe"
 
 	"golang.org/x/sys/windows"
+
+	"github.com/guts/antigame/internal/winproc"
 )
 
 // Win32 sarmalayicilari. Pencereler arasinda paylasilan sikici is burada
@@ -561,6 +564,17 @@ func isWindow(hwnd uintptr) bool {
 	return r != 0
 }
 
+// trim, biriken bellegi isletim sistemine geri verir.
+//
+// Diyaloglar kapanirken cagriliyor: QR gorseli ve calisan process
+// listesi gecici olarak birkac megabayt tutuyor ve varsayilan ayarlarla
+// bu tepe kalici bir tabana donusuyor. Arayuz kullanici bekledigi
+// aralarda calistigi icin tam bir toplamanin maliyeti gorunmuyor.
+func trim() {
+	debug.FreeOSMemory()
+	_ = winproc.Trim()
+}
+
 // runModal, diyalogun kendi mesaj dongusunu calistirir ve pencere
 // kapanana kadar bloklar. Sahip pencere bu sirada devre disi: modal
 // olmasinin tek anlami bu.
@@ -591,6 +605,7 @@ func runModal(hwnd, parent uintptr) {
 		enable(parent, true)
 		procSetForegroundWindow.Call(parent)
 	}
+	trim()
 }
 
 // info, bilgi kutusu gosterir.

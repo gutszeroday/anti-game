@@ -5,6 +5,7 @@ package ui
 import (
 	"errors"
 	"runtime"
+	"runtime/debug"
 	"unsafe"
 
 	"github.com/guts/antigame/internal/single"
@@ -63,6 +64,13 @@ func Run(dir string, d Deps) error {
 		return errors.Join(ErrNoGUI, err)
 	}
 	show(w.hwnd)
+
+	// Arayuz cok az ayirma yapiyor ama diyaloglar tepe yapiyor (QR
+	// gorseli, calisan process listesi). Varsayilan ayarlarla o tepe
+	// kalici bir tabana donusuyor; izleyicideki ayni care burada da
+	// gecerli.
+	debug.SetGCPercent(20)
+	trim()
 
 	var msg msgStruct
 	for {

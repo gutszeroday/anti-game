@@ -4,6 +4,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -27,6 +28,7 @@ import (
 	"github.com/guts/antigame/internal/status"
 	"github.com/guts/antigame/internal/task"
 	"github.com/guts/antigame/internal/tray"
+	"github.com/guts/antigame/internal/ui"
 	"github.com/guts/antigame/internal/uninstall"
 	"github.com/guts/antigame/internal/watch"
 	"github.com/guts/antigame/internal/wininput"
@@ -49,15 +51,27 @@ Argümansız çalıştırıldığında (ör. çift tıklayarak) menü açılır.
 `
 
 func main() {
-	// Cift tiklayan kullanici icin menu: argumansiz calistirildiginda
-	// kullanim metnini yazip kapanmak, ekranda hicbir sey gostermiyordu.
+	// Cift tiklayan kullanici icin arayuz: argumansiz calistirildiginda
+	// pencere acilir. Pencere acilamazsa program kullanilamaz hale
+	// gelmemeli; eski metin menusu yedek yol olarak duruyor.
 	if len(os.Args) < 2 {
-		if err := menu.Run(os.Stdin, os.Stdout, menuHeader, menuItems()); err != nil {
+		err := ui.Run(config.Dir(), uiDeps())
+		if err == nil {
+			return
+		}
+		attachConsole()
+		if errors.Is(err, ui.ErrNoGUI) {
+			fmt.Fprintf(os.Stderr, "uyarı: %v, metin menüsüne düşülüyor\n", err)
+			err = menu.Run(os.Stdin, os.Stdout, menuHeader, menuItems())
+		}
+		if err != nil {
 			fmt.Fprintf(os.Stderr, "hata: %v\n", err)
 			os.Exit(1)
 		}
 		return
 	}
+	attachConsole()
+
 	var err error
 	switch os.Args[1] {
 	case "gate":
@@ -200,6 +214,17 @@ func menuItems() []menu.Item {
 }
 
 const watchLock = "antigame-watch"
+
+// uiDeps, arayuzun kendi basina yapamayacagi isleri verir. Tek-ornek
+// kilidinin adi ve izleyiciyi konsoldan koparma bayragi bu katmanin
+// bilgisi; arayuz bunlari ogrenirse ayni mantik iki yerde yasar.
+func uiDeps() ui.Deps {
+	return ui.Deps{
+		WatcherRunning: watcherRunning,
+		StartWatcher:   spawnWatcher,
+		ExePath:        os.Executable,
+	}
+}
 
 // toggleAutostart, oturum acilisinda baslatan zamanlanmis gorevi kurar
 // veya kaldirir. Kurulum sihirbazi bunu zaten yapiyor; buradaki secenek
