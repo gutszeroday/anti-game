@@ -48,3 +48,29 @@ func TestRunWithoutItemsStillExits(t *testing.T) {
 		t.Fatal("bos menuyle cikilamadi")
 	}
 }
+
+func TestDefaultItemFindsTheMarkedOne(t *testing.T) {
+	items := []Item{{Label: "a"}, {Label: "b", Default: true}, {Label: "c"}}
+	if got := defaultItem(items); got != 1 {
+		t.Errorf("defaultItem = %d, istenen 1", got)
+	}
+}
+
+func TestDefaultItemReportsNoneWhenUnmarked(t *testing.T) {
+	if got := defaultItem([]Item{{Label: "a"}, {Label: "b"}}); got != -1 {
+		t.Errorf("defaultItem = %d, istenen -1", got)
+	}
+}
+
+func TestDefaultItemTakesTheFirstMark(t *testing.T) {
+	items := []Item{{Label: "a", Default: true}, {Label: "b", Default: true}}
+	if got := defaultItem(items); got != 0 {
+		t.Errorf("defaultItem = %d, istenen 0", got)
+	}
+}
+
+func TestDefaultItemOnEmptyList(t *testing.T) {
+	if got := defaultItem(nil); got != -1 {
+		t.Errorf("defaultItem = %d, istenen -1", got)
+	}
+}

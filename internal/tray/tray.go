@@ -21,6 +21,22 @@ import (
 type Item struct {
 	Label string
 	Run   func()
+	// Default, simgeye cift tiklandiginda calisacak ogeyi isaretler.
+	// Alternatif olarak "listenin ilki varsayilandir" denebilirdi; o
+	// zaman menu sirasi degistiginde sessizce baska bir eylem
+	// calisirdi.
+	Default bool
+}
+
+// defaultItem, cift tiklamada calisacak ogenin sirasini verir.
+// Isaretli oge yoksa -1.
+func defaultItem(items []Item) int {
+	for i, it := range items {
+		if it.Default {
+			return i
+		}
+	}
+	return -1
 }
 
 var (
@@ -53,6 +69,7 @@ const (
 	wmDestroy     = 0x0002
 	wmRButtonUp   = 0x0205
 	wmLButtonUp   = 0x0202
+	wmLButtonDbl  = 0x0203
 	wmApp         = 0x8000
 	wmTrayMessage = wmApp + 1
 	wmTrayQuit    = wmApp + 2
@@ -195,8 +212,16 @@ func wndProc(hwnd, message, wparam, lparam uintptr) uintptr {
 	switch message {
 	case wmTrayMessage:
 		switch uint32(lparam) {
-		case wmRButtonUp, wmLButtonUp:
+		case wmRButtonUp:
 			showMenu(hwnd)
+			return 0
+		case wmLButtonDbl:
+			// Cift tiklama tek tiklamayi da uretir; sol tik menuyu
+			// acsaydi menu acilip hemen kapanirdi. Windows'ta tepsi
+			// menusu zaten sag tikla acilir.
+			if i := defaultItem(curItems); i >= 0 && curItems[i].Run != nil {
+				go curItems[i].Run()
+			}
 			return 0
 		}
 	case wmTrayQuit, wmDestroy:

@@ -526,19 +526,26 @@ func lvSetColumnWidths(hwnd uintptr, widths []int32, dpi uint32) {
 	}
 }
 
+// osPointer, isletim sisteminden gelen ham bir adresi Go isaretcisine
+// cevirir.
+//
+// go vet bu donusumu "possible misuse of unsafe.Pointer" diye
+// isaretler: uintptr'den isaretciye gecisi genel olarak guvensiz
+// sayiyor, cunku arada bir adres hesabi yapilirsa cop toplayici bunu
+// goremez. Burada boyle bir hesap yok; adres dogrudan Windows'tan
+// geliyor ve gecerliligini o garanti ediyor. Paketteki butun bu tur
+// donusumler bu tek fonksiyondan geciyor, boylece uyari da tek kaliyor
+// ve digerleri gozden kacmiyor.
+func osPointer(addr uintptr) unsafe.Pointer { return unsafe.Pointer(addr) }
+
 // applyMinSize, WM_GETMINMAXINFO'nun tasidigi yapiya en kucuk pencere
 // olcusunu yazar. Isleyen bir sinir olmadan pencere kucultuldugunde
 // kontroller ust uste biniyor.
-//
-// go vet burayi "possible misuse of unsafe.Pointer" diye isaretler:
-// uintptr'den pointer'a donusumu genel olarak guvensiz sayiyor. Bu
-// mesajda isaretcinin gecerliligini Windows garanti ediyor ve baska
-// yolu yok. Donusum tek bir yerde tutuluyor ki uyari da tek kalsin.
 func applyMinSize(lparam uintptr, dpi uint32) bool {
 	if lparam == 0 {
 		return false
 	}
-	mm := (*minMaxInfo)(unsafe.Pointer(lparam))
+	mm := (*minMaxInfo)(osPointer(lparam))
 	mm.MinTrackSize.X = Scale(dpi, MinW)
 	mm.MinTrackSize.Y = Scale(dpi, MinH)
 	return true
