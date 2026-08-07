@@ -361,6 +361,20 @@ func runWatch(background bool) error {
 
 func trayItems(dir string) []tray.Item {
 	return []tray.Item{
+		// Varsayilan oge: simgeye cift tiklayinca bu calisir.
+		{Label: "Arayüzü aç", Default: true, Run: func() {
+			exe, err := os.Executable()
+			if err != nil {
+				tray.Info("antigame", "Program yolu bulunamadı: "+err.Error())
+				return
+			}
+			// Arayuz ayri process olarak aciliyor: kendi mesaj dongusu
+			// ve tek-ornek kilidi var. Zaten aciksa kilidi alamaz ve
+			// mevcut pencereyi one getirip cikar.
+			if err := exec.Command(exe).Start(); err != nil {
+				tray.Info("antigame", "Arayüz açılamadı: "+err.Error())
+			}
+		}},
 		{Label: "Haftalık raporu aç", Run: func() {
 			if _, err := report.Run(dir); err != nil {
 				tray.Info("antigame", "Rapor açılamadı: "+err.Error())

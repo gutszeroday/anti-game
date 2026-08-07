@@ -45,18 +45,19 @@ func Scale(dpi uint32, v int32) int32 {
 }
 
 // MainLayout, ana penceredeki her kontrolun yeridir.
+//
+// Kisiler ve Kaldir burada yok: menu cubuguna tasindilar. Alt sirada
+// besinci dugme en kucuk pencere genisligine sigmiyordu.
 type MainLayout struct {
-	Status       Rect
-	GamesLabel   Rect
-	Games        Rect
-	AddBtn       Rect
-	RemoveBtn    Rect
-	AutoStart    Rect
-	Note         Rect
-	WatchBtn     Rect
-	ReportBtn    Rect
-	PeopleBtn    Rect
-	RemoveAppBtn Rect
+	Status     Rect
+	GamesLabel Rect
+	Games      Rect
+	AddBtn     Rect
+	RemoveBtn  Rect
+	AutoStart  Rect
+	Note       Rect
+	WatchBtn   Rect
+	ReportBtn  Rect
 }
 
 // Main, verilen istemci alani icin yerlesimi hesaplar.
@@ -79,7 +80,7 @@ func Main(w, h int32, dpi uint32) MainLayout {
 	// Alt siradan geriye dogru: dugme sirasi, not, baslangic kutusu.
 	bh, bw := s(btnH), s(btnW)
 	btnY := h - p - bh
-	for i, r := range []*Rect{&l.WatchBtn, &l.ReportBtn, &l.PeopleBtn, &l.RemoveAppBtn} {
+	for i, r := range []*Rect{&l.WatchBtn, &l.ReportBtn} {
 		*r = Rect{left + int32(i)*(bw+g), btnY, bw, bh}
 	}
 

@@ -91,6 +91,7 @@ const (
 	esAutoHScroll = 0x00000080
 	esNumber      = 0x00002000
 	esCenter      = 0x00000001
+	esReadOnly    = 0x00000800
 
 	ssLeft = 0x00000000
 

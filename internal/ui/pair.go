@@ -29,28 +29,32 @@ func showPair(parent uintptr, account string) (secret []byte, counter uint64, ok
 		return nil, 0, false
 	}
 
-	m, err := newModal(parent, "Anahtar eşleştirme — "+account, 470, 470)
+	m, err := newModal(parent, "Anahtar eşleştirme — "+account, 500, 470)
 	if err != nil {
 		warn(parent, "antigame", "Pencere açılamadı: "+err.Error())
 		return nil, 0, false
 	}
 
-	qrRect := Rect{m.s(115), m.s(12), m.s(qrPt), m.s(qrPt)}
+	qrRect := Rect{m.s(130), m.s(12), m.s(qrPt), m.s(qrPt)}
 	m.onPaint = func(hdc uintptr) { drawImage(hdc, img, qrRect) }
 
 	m.label("Google Authenticator veya benzeri bir uygulamada \"QR kodu tara\" ile "+
 		"okutun, sonra uygulamada görünen 6 haneli kodu girin.",
-		Rect{12, 262, 446, 34})
+		Rect{12, 262, 476, 34})
 
 	m.label("Kod:", Rect{12, 306, 34, 20})
 	code := m.edit("", Rect{50, 302, 90, 26}, esNumber|esCenter)
 
 	_, revealID := m.button("Anahtarı göster", Rect{152, 302, 130, 26}, false)
+	copyBtn, copyID := m.button("Kopyala", Rect{292, 302, 90, 26}, false)
+	// Anahtar gosterilmeden kopyalanacak bir sey yok; dugmenin
+	// tiklanabilir durmasi yaniltici olurdu.
+	enable(copyBtn, false)
 
-	status := m.label("", Rect{12, 338, 446, 70})
+	status := m.label("", Rect{12, 338, 476, 70})
 
-	_, okID := m.button("Onayla", Rect{262, 424, 90, 28}, true)
-	_, cancelID := m.button("Vazgeç", Rect{364, 424, 90, 28}, false)
+	_, okID := m.button("Onayla", Rect{292, 424, 90, 28}, true)
+	_, cancelID := m.button("Vazgeç", Rect{394, 424, 90, 28}, false)
 
 	m.onCmd = func(id int) {
 		switch id {
@@ -63,6 +67,14 @@ func showPair(parent uintptr, account string) (secret []byte, counter uint64, ok
 			setText(status, "DİKKAT: Bu anahtarı gören herkes kapıyı açabilir. "+
 				"Arkadaşınıza iletin, kendinizde saklamayın.\n\n"+
 				pairing.GroupKey(pairing.EncodeKey(s)))
+			enable(copyBtn, true)
+		case copyID:
+			if err := copySecret(m.hwnd, pairing.GroupKey(pairing.EncodeKey(s))); err != nil {
+				setText(status, "Kopyalanamadı: "+err.Error())
+				return
+			}
+			setText(status, "Anahtar panoya kopyalandı. Pano geçmişine (Win+V) "+
+				"yazılmadı, ama gönderdikten sonra panoyu temizleyin.")
 		case okID, idOK:
 			entered := strings.TrimSpace(textOf(code))
 			if entered == "" {

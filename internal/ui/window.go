@@ -28,6 +28,9 @@ const (
 	idReport
 	idPeople
 	idUninstall
+	idDataInfo
+	idOpenFolder
+	idAbout
 )
 
 // Durum blogunun tazelenme araligi. Iki saniye, izleyici baslatildiktan
@@ -59,8 +62,6 @@ type mainWindow struct {
 	note       uintptr
 	watchBtn   uintptr
 	reportBtn  uintptr
-	peopleBtn  uintptr
-	uninstBtn  uintptr
 
 	// cfg, son okunan yapilandirmadir; "Cikar" dugmesi secili satirin
 	// exe adini buradan bulur.
@@ -100,6 +101,15 @@ func newMainWindow(dir string, d Deps) (*mainWindow, error) {
 	w.font = uiFont(w.dpi)
 	cur = w
 
+	// Menu takilamazsa pencereyi acmiyoruz. Kisiler, Kaldir ve Veriler
+	// yalnizca menuden ulasilabiliyor; menusuz bir pencere onlara giden
+	// tek yolu kapatirdi. Hata ErrNoGUI'ye sarilip metin menusune
+	// dusuluyor, orada hepsi duruyor.
+	if err := buildMenu(hwnd); err != nil {
+		destroy(hwnd)
+		return nil, err
+	}
+
 	w.build()
 	w.relayout()
 	w.refresh()
@@ -127,8 +137,6 @@ func (w *mainWindow) build() {
 
 	w.watchBtn = create("BUTTON", "İzleyiciyi başlat", bsPushButton|wsTabStop, 0, z, w.hwnd, idWatch, w.font)
 	w.reportBtn = create("BUTTON", "Haftalık rapor", bsPushButton|wsTabStop, 0, z, w.hwnd, idReport, w.font)
-	w.peopleBtn = create("BUTTON", "Kişiler…", bsPushButton|wsTabStop, 0, z, w.hwnd, idPeople, w.font)
-	w.uninstBtn = create("BUTTON", "Kaldır…", bsPushButton|wsTabStop, 0, z, w.hwnd, idUninstall, w.font)
 }
 
 func (w *mainWindow) relayout() {
@@ -139,7 +147,6 @@ func (w *mainWindow) relayout() {
 		w.addBtn: l.AddBtn, w.removeBtn: l.RemoveBtn,
 		w.autoStart: l.AutoStart, w.note: l.Note,
 		w.watchBtn: l.WatchBtn, w.reportBtn: l.ReportBtn,
-		w.peopleBtn: l.PeopleBtn, w.uninstBtn: l.RemoveAppBtn,
 	} {
 		move(h, r)
 	}
@@ -297,6 +304,21 @@ func (w *mainWindow) onCommand(id int) {
 		if showRemove(w.hwnd, w.dir) {
 			destroy(w.hwnd)
 		}
+
+	case idDataInfo:
+		showData(w.hwnd, w.dir)
+
+	case idOpenFolder:
+		if err := openFolder(w.dir); err != nil {
+			w.setNote("Klasör açılamadı: " + err.Error())
+		}
+
+	case idAbout:
+		info(w.hwnd, "antigame",
+			"antigame — oyun süresi takibi ve MFA kapısı\n\n"+
+				"Korunan bir oyunu açmak için anahtarı olan birinden kod gerekiyor.\n"+
+				"Süre kayıtları haftalık raporda toplanıyor.\n\n"+
+				"Veri klasörü:\n"+w.dir)
 	}
 }
 
@@ -365,7 +387,7 @@ func mainProc(hwnd, msg, wparam, lparam uintptr) uintptr {
 			w.font = uiFont(w.dpi)
 			for _, h := range []uintptr{
 				w.status, w.gamesLabel, w.games, w.addBtn, w.removeBtn,
-				w.autoStart, w.note, w.watchBtn, w.reportBtn, w.peopleBtn, w.uninstBtn,
+				w.autoStart, w.note, w.watchBtn, w.reportBtn,
 			} {
 				setFont(h, w.font)
 			}

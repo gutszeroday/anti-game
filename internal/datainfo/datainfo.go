@@ -108,7 +108,10 @@ func describe(name string, names map[string]string) (Kind, string) {
 		return KindEvents, "Süre kayıtları — " + month(name)
 
 	default:
-		return KindUnknown, "antigame'e ait değil"
+		// "antigame'e ait degil" demek yanlis olurdu: config.json.bak
+		// gibi dosyalar antigame'in birakip artik okumadigi seyler
+		// olabilir. Soylenebilecek dogru sey yalnizca su.
+		return KindUnknown, "antigame bu dosyayı okumuyor"
 	}
 }
 
