@@ -2,6 +2,9 @@ package uninstall
 
 import (
 	"bytes"
+	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -43,5 +46,42 @@ func TestRejectedCodeLeavesTaskInstalled(t *testing.T) {
 	)
 	if err == nil {
 		t.Fatal("gecersiz kod kabul edildi")
+	}
+}
+
+func TestPurgeKeepsDataWhenNotAsked(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "iz.txt"), []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := purge(dir, false, func() error { return nil }); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "iz.txt")); err != nil {
+		t.Error("veri silinmemeliydi")
+	}
+}
+
+func TestPurgeDeletesDataWhenAsked(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "iz.txt"), []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := purge(dir, true, func() error { return nil }); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(dir); !os.IsNotExist(err) {
+		t.Error("veri dizini silinmeliydi")
+	}
+}
+
+func TestPurgeKeepsDataWhenTaskRemovalFails(t *testing.T) {
+	dir := t.TempDir()
+	boom := errors.New("gorev kaldirilamadi")
+	if err := purge(dir, true, func() error { return boom }); !errors.Is(err, boom) {
+		t.Fatalf("hata yutuldu: %v", err)
+	}
+	if _, err := os.Stat(dir); err != nil {
+		t.Error("gorev kaldirilamadiysa veri silinmemeliydi")
 	}
 }

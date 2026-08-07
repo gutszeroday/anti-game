@@ -53,23 +53,73 @@ func run(dir string, in io.Reader, out io.Writer, verify verifyFunc, remove func
 
 	fmt.Fprint(out, "Kayıtlı süre verileri de silinsin mi? (e/h): ")
 	ans, _ := r.ReadString('\n')
-	if strings.EqualFold(strings.TrimSpace(ans), "e") {
-		if err := os.RemoveAll(dir); err != nil {
-			return err
-		}
-		fmt.Fprintln(out, "Veriler silindi.")
-	} else {
+	if !strings.EqualFold(strings.TrimSpace(ans), "e") {
 		fmt.Fprintf(out, "Veriler duruyor: %s\n", dir)
+		return nil
 	}
+	// Gorev yukarida kaldirildi; burada yalnizca veri silinsin diye
+	// kaldirici yerine bos bir islev veriliyor.
+	if err := purge(dir, true, func() error { return nil }); err != nil {
+		return err
+	}
+	fmt.Fprintln(out, "Veriler silindi.")
 	return nil
 }
 
-// Run, cmd tarafindan cagrilan ust seviye giristir.
-func Run(dir string, in io.Reader, out io.Writer) error {
-	cfg, err := config.Load(dir)
-	if err != nil {
+// purge, gorev kaldiriciyi disaridan alir; boylece gercek bir zamanlanmis
+// gorev olusturmadan test edilebilir.
+//
+// Sira onemli: gorev kaldirilamadiysa veri durmali. Aksi halde izleyici
+// oturum acilisinda yeniden baslar ama gecmisi yok olmus olur.
+func purge(dir string, deleteData bool, remove func() error) error {
+	if err := remove(); err != nil {
 		return err
 	}
+	if !deleteData {
+		return nil
+	}
+	return os.RemoveAll(dir)
+}
+
+// Purge, zamanlanmis gorevi kaldirir ve istenirse veri dizinini siler.
+// Kodun dogrulanmasi cagirana ait: once Verify, sonra Purge.
+func Purge(dir string, deleteData bool) error {
+	return purge(dir, deleteData, task.Remove)
+}
+
+// Verify, kaldirma kodunu dogrular ve reddedilme sebebini metin olarak
+// dondurur. Yan etkisi var: Attempt basarida bir oturum acar. Kaldirma
+// sirasinda bunun pratik etkisi yok, kilit ve tekrar kullanim korumasini
+// yeniden yazmamak icin ayni yol kullaniliyor.
+func Verify(dir, code string) (bool, string, error) {
+	cfg, err := config.Load(dir)
+	if err != nil {
+		return false, "", err
+	}
+	keys, err := people.Keys(dir)
+	if err != nil {
+		return false, "", err
+	}
+	if len(keys) == 0 {
+		return false, "", vault.ErrNoSecret
+	}
+	v := auth.Verifier{
+		Dir:   dir,
+		Keys:  keys,
+		Grace: time.Duration(cfg.GraceMinutes) * time.Minute,
+	}
+	o, err := v.Attempt(code)
+	if err != nil {
+		return false, "", err
+	}
+	return o.OK, o.Message, nil
+}
+
+// Run, cmd tarafindan cagrilan ust seviye giristir.
+//
+// Anahtar yoklugu kod sorulmadan once kontrol ediliyor: girilmesi imkansiz
+// bir kod istemek kullaniciyi bosuna ugrastirirdi.
+func Run(dir string, in io.Reader, out io.Writer) error {
 	keys, err := people.Keys(dir)
 	if err != nil {
 		return err
@@ -77,20 +127,6 @@ func Run(dir string, in io.Reader, out io.Writer) error {
 	if len(keys) == 0 {
 		return vault.ErrNoSecret
 	}
-	v := auth.Verifier{
-		Dir:   dir,
-		Keys:  keys,
-		Grace: time.Duration(cfg.GraceMinutes) * time.Minute,
-	}
-	verify := func(code string) (bool, string, error) {
-		// Attempt basarida bir oturum acar; kaldirma sirasinda bunun
-		// pratik bir etkisi yok, kilit ve tekrar kullanim korumasini
-		// yeniden yazmamak icin ayni yol kullaniliyor.
-		o, err := v.Attempt(code)
-		if err != nil {
-			return false, "", err
-		}
-		return o.OK, o.Message, nil
-	}
+	verify := func(code string) (bool, string, error) { return Verify(dir, code) }
 	return run(dir, in, out, verify, task.Remove)
 }
