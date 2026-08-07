@@ -7,7 +7,10 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"time"
+
+	"golang.org/x/sys/windows"
 
 	"github.com/guts/antigame/internal/config"
 	"github.com/guts/antigame/internal/store"
@@ -191,8 +194,22 @@ func Run(dir string) (string, error) {
 	if err := os.WriteFile(out, Render(Aggregate(ev, cfg, now, time.Local)), 0o600); err != nil {
 		return "", err
 	}
-	if err := exec.Command("cmd", "/c", "start", "", out).Start(); err != nil {
+	if err := open(out).Start(); err != nil {
 		return out, nil // tarayici acilamadi ama dosya hazir
 	}
 	return out, nil
+}
+
+// open, dosyayi varsayilan uygulamada acan komutu kurar.
+//
+// CREATE_NO_WINDOW sart: arayuz -H=windowsgui ile derlendigi icin
+// process'in konsolu yok ve cmd bir konsol uygulamasi. Bayrak
+// verilmezse raporu acmak ekranda bir an siyah pencere parlatiyor.
+func open(path string) *exec.Cmd {
+	c := exec.Command("cmd", "/c", "start", "", path)
+	c.SysProcAttr = &syscall.SysProcAttr{
+		HideWindow:    true,
+		CreationFlags: windows.CREATE_NO_WINDOW,
+	}
+	return c
 }

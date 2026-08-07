@@ -3,6 +3,8 @@ package task
 import (
 	"strings"
 	"testing"
+
+	"golang.org/x/sys/windows"
 )
 
 func TestXMLContainsRestartPolicy(t *testing.T) {
@@ -68,5 +70,39 @@ func TestUTF16WithBOM(t *testing.T) {
 		if b[i] != want[i] {
 			t.Fatalf("bayt %d: %#x, %#x bekleniyordu", i, b[i], want[i])
 		}
+	}
+}
+
+// Arayuz -H=windowsgui ile derlendigi icin process'in konsolu yok ve
+// schtasks bir konsol uygulamasi. Bayrak verilmezse her cagri ekranda
+// siyah bir pencere acip kapatiyor ve aktivasyonu caliyor; iki saniyede
+// bir tazelenen durum blogu bunu surekli hale getiriyordu.
+func TestSchtasksNeverOpensAConsoleWindow(t *testing.T) {
+	cases := map[string][]string{
+		"query":  {"/Query", "/TN", Name},
+		"create": {"/Create", "/TN", Name, "/XML", "x.xml", "/F"},
+		"delete": {"/Delete", "/TN", Name, "/F"},
+	}
+	for name, args := range cases {
+		c := command(args...)
+		if c.SysProcAttr == nil {
+			t.Errorf("%s: SysProcAttr kurulmamis", name)
+			continue
+		}
+		if c.SysProcAttr.CreationFlags&windows.CREATE_NO_WINDOW == 0 {
+			t.Errorf("%s: CREATE_NO_WINDOW yok, konsol penceresi acilir", name)
+		}
+		if !c.SysProcAttr.HideWindow {
+			t.Errorf("%s: HideWindow kurulmamis", name)
+		}
+	}
+}
+
+func TestCommandKeepsItsArguments(t *testing.T) {
+	c := command("/Query", "/TN", Name)
+	got := strings.Join(c.Args[1:], " ")
+	want := "/Query /TN " + Name
+	if got != want {
+		t.Errorf("argumanlar %q, istenen %q", got, want)
 	}
 }

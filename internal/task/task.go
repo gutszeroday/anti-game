@@ -13,7 +13,10 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"syscall"
 	"unicode/utf16"
+
+	"golang.org/x/sys/windows"
 )
 
 // Name, Gorev Zamanlayici'daki gorev adidir.
@@ -98,6 +101,22 @@ func currentUser() string {
 	return domain + `\` + user
 }
 
+// command, schtasks komutunu kurar.
+//
+// Konsol penceresini bastirmak sart: arayuz -H=windowsgui ile derlendigi
+// icin process'in konsolu yok ve schtasks bir konsol uygulamasi. Bayrak
+// verilmezse Windows her cagri icin yeni bir konsol ve conhost penceresi
+// aciyor; pencere ekranda gorunup aktivasyonu caliyor, kullanicinin
+// tiklamalari ve yazdiklari kayboluyor.
+func command(args ...string) *exec.Cmd {
+	c := exec.Command("schtasks", args...)
+	c.SysProcAttr = &syscall.SysProcAttr{
+		HideWindow:    true,
+		CreationFlags: windows.CREATE_NO_WINDOW,
+	}
+	return c
+}
+
 func Install(exePath string) error {
 	f := filepath.Join(os.TempDir(), "antigame-task.xml")
 	if err := os.WriteFile(f, utf16LE(XML(exePath, currentUser())), 0o600); err != nil {
@@ -105,7 +124,7 @@ func Install(exePath string) error {
 	}
 	defer os.Remove(f)
 
-	out, err := exec.Command("schtasks", "/Create", "/TN", Name, "/XML", f, "/F").CombinedOutput()
+	out, err := command("/Create", "/TN", Name, "/XML", f, "/F").CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("zamanlanmış görev kurulamadı: %w\n%s", err, out)
 	}
@@ -113,7 +132,7 @@ func Install(exePath string) error {
 }
 
 func Remove() error {
-	out, err := exec.Command("schtasks", "/Delete", "/TN", Name, "/F").CombinedOutput()
+	out, err := command("/Delete", "/TN", Name, "/F").CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("zamanlanmış görev kaldırılamadı: %w\n%s", err, out)
 	}
@@ -122,8 +141,11 @@ func Remove() error {
 
 // Installed, gorev kayitli mi soyler. schtasks gorev yoksa sifir disi
 // donerek hata verir; bu bir arizadan cok "yok" cevabidir.
+//
+// Cagri bir process dogurmayi gerektiriyor ve yaklasik 45 ms suruyor;
+// siki bir dongude cagrilmamali.
 func Installed() (bool, error) {
-	if err := exec.Command("schtasks", "/Query", "/TN", Name).Run(); err != nil {
+	if err := command("/Query", "/TN", Name).Run(); err != nil {
 		return false, nil
 	}
 	return true, nil

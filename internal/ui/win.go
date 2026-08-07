@@ -40,6 +40,7 @@ var (
 	procShowWindow          = user32.NewProc("ShowWindow")
 	procUpdateWindow        = user32.NewProc("UpdateWindow")
 	procEnableWindow        = user32.NewProc("EnableWindow")
+	procIsWindowEnabled     = user32.NewProc("IsWindowEnabled")
 	procMoveWindow          = user32.NewProc("MoveWindow")
 	procGetClientRect       = user32.NewProc("GetClientRect")
 	procGetWindowRect       = user32.NewProc("GetWindowRect")
@@ -441,12 +442,24 @@ func textOf(hwnd uintptr) string {
 	return windows.UTF16ToString(buf)
 }
 
+// enable, kontrolu etkinlestirir veya devre disi birakir. Durum zaten
+// istenen haldeyse dokunmuyor: odaklanmis bir kontrolu devre disi
+// birakmak odagi kaydiriyor ve zamanlayicidan her cagrildiginda
+// kullanicinin klavye gezinmesini bozardi.
 func enable(hwnd uintptr, on bool) {
+	if isEnabled(hwnd) == on {
+		return
+	}
 	var v uintptr
 	if on {
 		v = 1
 	}
 	procEnableWindow.Call(hwnd, v)
+}
+
+func isEnabled(hwnd uintptr) bool {
+	r, _, _ := procIsWindowEnabled.Call(hwnd)
+	return r != 0
 }
 
 func setChecked(hwnd uintptr, on bool) {

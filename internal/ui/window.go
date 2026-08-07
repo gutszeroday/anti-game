@@ -65,6 +65,12 @@ type mainWindow struct {
 	// cfg, son okunan yapilandirmadir; "Cikar" dugmesi secili satirin
 	// exe adini buradan bulur.
 	cfg *config.Config
+
+	// summary ve hasKey onbellekli: uretmeleri her kisinin anahtar
+	// dosyasini cozmeyi gerektiriyor ve bu bilgi kendiliginden
+	// degismiyor, yalnizca kullanici kisi ekleyip cikardiginda.
+	summary string
+	hasKey  bool
 }
 
 // Ana pencere durumu paket duzeyinde: WndProc bir C geri cagrimidir ve
@@ -141,21 +147,23 @@ func (w *mainWindow) relayout() {
 
 // header, durum blogunun metnini kurar. Metin menusundeki basligin
 // aynisi: kullanici hangi kabugu kullanirsa kullansin ayni seyi gormeli.
+//
+// Yalnizca ucuz kaynaklardan besleniyor; kisi ozeti onbellekten geliyor.
 func (w *mainWindow) header() string {
 	var b strings.Builder
 
-	if w.deps.WatcherRunning != nil && w.deps.WatcherRunning() {
+	if w.watcherRunning() {
 		b.WriteString("İzleyici: çalışıyor\n")
 	} else {
 		b.WriteString("İzleyici: durdu — aşağıdan başlatabilirsiniz\n")
 	}
 
-	if !keyReady(w.dir) {
+	if !w.hasKey {
 		b.WriteString("MFA: kurulmadı — kapı devre dışı, yalnızca süre kaydediliyor\n")
 		b.WriteString("Kişiler penceresinden anahtar verin.")
 		return b.String()
 	}
-	b.WriteString(people.Summary(w.dir))
+	b.WriteString(w.summary)
 	b.WriteString("\n")
 
 	s, err := status.Text(w.dir, time.Now().UTC())
@@ -166,6 +174,10 @@ func (w *mainWindow) header() string {
 	return b.String()
 }
 
+func (w *mainWindow) watcherRunning() bool {
+	return w.deps.WatcherRunning != nil && w.deps.WatcherRunning()
+}
+
 // keyReady, kapiyi acabilecek en az bir kisi var mi soyler. Bir kisinin
 // bozuk anahtar dosyasi digerlerini kapinin disinda birakmamali; bu
 // yuzden sayilan, cozulebilen anahtarlardir.
@@ -174,27 +186,45 @@ func keyReady(dir string) bool {
 	return err == nil && len(keys) > 0
 }
 
-func (w *mainWindow) refresh() {
+// tick, zamanlayicidan cagrilir. Yalnizca kendiliginden degisebilecek
+// seyleri okur.
+//
+// Burada pahali is yapilmamali. Onceden her tik task.Installed()
+// cagiriyordu; o bir schtasks process'i doguruyor ve arayuzun konsolu
+// olmadigi icin ekranda iki saniyede bir konsol penceresi acilip
+// kapaniyordu. Liste de her tikta bosaltilip yeniden doldurulunca
+// kullanicinin secimi silinip "Cikar" dugmesi kullanilamaz hale
+// geliyordu.
+func (w *mainWindow) tick() {
 	setText(w.status, w.header())
+	enable(w.watchBtn, !w.watcherRunning())
+}
+
+// refresh, degismis olabilecek her seyi yeniden okur. Acilista ve
+// kullanici bir sey degistirdikten sonra cagrilir, zamanlayicidan degil.
+func (w *mainWindow) refresh() {
+	// Not satiri sifirlaniyor: "oyun listesi bos" uyarisi oyun
+	// eklendikten sonra ekranda kalmamali. Eylem sonrasi mesajlar
+	// refresh'ten sonra yaziliyor, onlar etkilenmiyor.
+	setText(w.note, "")
+
+	w.hasKey = keyReady(w.dir)
+	w.summary = people.Summary(w.dir)
+
+	if installed, err := task.Installed(); err == nil {
+		setChecked(w.autoStart, installed)
+	}
 
 	cfg, err := config.Load(w.dir)
 	if err != nil {
 		w.cfg = nil
 		lvSetRows(w.games, nil)
 		setText(w.note, "Yapılandırma okunamadı: "+err.Error())
+		w.tick()
 		return
 	}
 	w.cfg = cfg
 	lvSetRows(w.games, GameRows(cfg))
-
-	installed, err := task.Installed()
-	if err == nil {
-		setChecked(w.autoStart, installed)
-	}
-
-	if w.deps.WatcherRunning != nil {
-		enable(w.watchBtn, !w.deps.WatcherRunning())
-	}
 
 	// Bos liste sessizce gecilmemeli: kullanici korumasiz oldugunu
 	// bilmeli.
@@ -202,6 +232,8 @@ func (w *mainWindow) refresh() {
 		setText(w.note, "Oyun listesi boş — hiçbir oyun kapıda durdurulmayacak, "+
 			"yalnızca süre kaydedilecek.")
 	}
+
+	w.tick()
 }
 
 // setNote, alt bilgi satirini degistirir. Bir sonraki refresh onu
@@ -317,7 +349,7 @@ func mainProc(hwnd, msg, wparam, lparam uintptr) uintptr {
 
 	case wmTimer:
 		if w != nil && w.hwnd == hwnd && wparam == refreshTimer {
-			w.refresh()
+			w.tick()
 			return 0
 		}
 

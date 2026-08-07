@@ -89,6 +89,18 @@ Geri dönüş yolu: `-H=windowsgui` kaldırılır, GUI modunda
 `ShowWindow(GetConsoleWindow(), SW_HIDE)` çağrılır. Bu durumda çift tıkta
 kısa bir konsol parlaması olur, CLI davranışı kusursuz olur.
 
+**Bu kararın yakalanmayan sonucu (sonradan düzeltildi).** Konsolu olmayan
+bir process'ten konsol uygulaması çalıştırılınca Windows *yeni* bir konsol
+ve `conhost.exe` penceresi açar. `schtasks` ve `cmd /c start` konsol
+uygulaması; önceden mevcut konsolu miras alıyor ve görünmüyorlardı. GUI'ye
+geçince her çağrı ekranda siyah bir pencere açıp kapatmaya, üstelik
+aktivasyonu çalmaya başladı — kullanıcı bunu donma olarak yaşadı.
+
+Kural: **bu kod tabanında bir konsol uygulaması çalıştıran her yer
+`CREATE_NO_WINDOW` vermek zorunda.** Uygulandığı yerler: `task.command`
+(üç `schtasks` çağrısı), `report.open`, `pairing.Pair`. `task` paketinde
+regresyon testi var.
+
 ### K4 — Manifest derlenmiş halde repoda
 
 Manifest'siz ham Win32, Ortak Kontroller v5 (Windows 95 görünümü) kullanır ve

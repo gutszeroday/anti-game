@@ -22,9 +22,11 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"time"
 
 	qrcode "github.com/skip2/go-qrcode"
+	"golang.org/x/sys/windows"
 
 	"github.com/guts/antigame/internal/totp"
 )
@@ -211,7 +213,15 @@ func Pair(r *bufio.Reader, out io.Writer, account string, onReveal func() error)
 	}
 	defer os.Remove(page)
 
-	if err := exec.Command("cmd", "/c", "start", "", page).Start(); err != nil {
+	// CREATE_NO_WINDOW sart: cagiran -H=windowsgui ile derlenmis olabilir,
+	// o zaman process'in konsolu yoktur ve cmd ekranda siyah bir pencere
+	// parlatir.
+	open := exec.Command("cmd", "/c", "start", "", page)
+	open.SysProcAttr = &syscall.SysProcAttr{
+		HideWindow:    true,
+		CreationFlags: windows.CREATE_NO_WINDOW,
+	}
+	if err := open.Start(); err != nil {
 		fmt.Fprintf(out, "Tarayıcı açılamadı, sayfayı elle açın: %s\n", page)
 	}
 	fmt.Fprintln(out, "\nQR kod tarayıcıda açıldı. Arkadaşınız okutsun.")
