@@ -1,7 +1,13 @@
 # Windows arayüzü — tasarım
 
 Tarih: 2026-08-07
-Durum: onaylandı, uygulanmayı bekliyor
+Durum: uygulandı. Bu belge, uygulama bittikten sonra gerçekleşen hâle
+göre düzeltildi; imzalar ve ölçümler koddan alınmıştır.
+
+Bilinen tek açık nokta: `go vet`, `internal/ui/win.go`'daki `applyMinSize`
+için "possible misuse of unsafe.Pointer" uyarısı veriyor. Windows'un
+WM_GETMINMAXINFO ile verdiği işaretçiyi okumanın başka yolu yok; dönüşüm
+tek bir fonksiyonda tutuldu ki uyarı da tek kalsın.
 
 ## Amaç
 
@@ -129,19 +135,34 @@ Bunlar `io.Reader`/`io.Writer` almıyor, değişiklik gerektirmiyor:
 
 ### Gereken iki çıkarma
 
-**`internal/pairing`** — `confirmPairing` (kod doğrulama, saat kayması
-tespiti, yanlış giriş ayrımı) şu an unexported ve `Pair()` içinden
-çağrılıyor. `Confirm` olarak dışa açılacak. İmza korunuyor, mevcut testler
-(`TestConfirmPairing*`) değişmiyor; yalnızca çağrılan ad güncelleniyor.
+**`internal/pairing`** — karar mantığı (kod doğrulama, saat kayması tespiti,
+yanlış giriş ayrımı) `confirmPairing`'in soru-cevap döngüsüne gömülüydü.
+Döngü değil kararın kendisi dışa açıldı:
+
+- `Check(secret []byte, code string, now time.Time) (counter uint64, ok bool, message string)`
+- `QRImage(uri string, size int) (image.Image, error)` — pencere QR'ı kendi
+  içinde çizdiği için PNG'ye gerek yok
+- `EncodeKey(secret []byte) string` — eskiden unexported `encodeKey`
+
+`confirmPairing` artık `Check`'i döngüye sarıyor; testleri değişmedi.
 
 **`internal/uninstall`** — kod doğrulama, görev kaldırma ve dosya silme sırası
-`Run()` gövdesinde. İkiye ayrılacak:
+`Run()` gövdesindeydi. İkiye ayrıldı:
 
-- `Verify(dir, code string) error` — kodu doğrular, yan etkisi yok
-- `Purge(dir string) error` — görevi kaldırır, veri dizinini siler
+- `Verify(dir, code string) (ok bool, message string, err error)` — mesaj
+  kullanıcıya gösterilmek zorunda, o yüzden `error` tek başına yetmiyor.
+  Yan etkisi var: doğrulama bir oturum açar (kilit ve tekrar kullanım
+  korumasını yeniden yazmamak için mevcut yol kullanılıyor).
+- `Purge(dir string, deleteData bool) error` — görevi kaldırır, `deleteData`
+  ise veri dizinini de siler. Sıra önemli: görev kaldırılamazsa veri duruyor,
+  aksi halde izleyici açılışta yeniden başlar ama geçmişi yok olmuş olur.
 
-`Run()` bu ikisini çağıran ince kabuk olarak kalıyor. Mevcut üç test
-korunuyor; `Verify` ve `Purge` için ayrıca doğrudan test yazılıyor.
+`Run()` bu ikisini çağıran ince kabuk olarak kalıyor. Anahtar yokluğunu kod
+sorulmadan önce kontrol ediyor: girilmesi imkânsız bir kod istemek boşuna.
+
+**`internal/gamelist`** — `AddLauncher(dir, name, exe, path string) error`
+eklendi. `Add`'in başlatıcı bayrağı yoktu ve pencerede o kutunun karşılığı
+gerekiyordu; mevcut `Add` imzası dokunulmadan kaldı.
 
 `setup.Run` olduğu gibi kalıyor. GUI sihirbazı aynı adımları
 (`pairing` → `people.Add` → `task.Install`) kendi sırasıyla çağırıyor.
@@ -218,7 +239,7 @@ güveniyor; hata mesajı diyalogda gösteriliyor.
 
 **Eşleştirme.** Tek parça, üç yerden çağrılıyor: ilk kurulum, yeni kişi,
 anahtar yenileme. İçerik: QR resmi, gruplanmış anahtar metni (elle girmek
-isteyen için), altı haneli kod alanı, durum satırı. `pairing.Confirm` yanlış
+isteyen için), altı haneli kod alanı, durum satırı. `pairing.Check` yanlış
 kod, saat kayması ve yanlış giriş durumlarını ayırt ediyor; üçü de ayrı
 mesajla gösteriliyor.
 
@@ -233,7 +254,8 @@ kapanıyor.
 
 ```
 internal/ui/
-  ui.go       Run(dir) — tek örnek kilidi, mesaj döngüsü, geri düşme
+  ui.go       Run(dir, Deps) — tek örnek kilidi, mesaj döngüsü, geri düşme
+  modal.go    diyalogların ortak iskeleti
   win.go      Win32 sarmalayıcıları: sınıf, kontrol, font, DPI
   layout.go   saf yerleşim hesabı (test edilir)
   rows.go     config/people -> liste satırları (test edilir)
@@ -285,7 +307,7 @@ tutuluyor: mantık yok, yalnızca çağrı ve yerleşim.
   ayrımı, uzun adların kısaltılması); `[]people.Entry` → kişi liste satırları
   (anahtarsız kişi işaretleniyor)
 - `uninstall.Verify` ve `uninstall.Purge` — çıkarmadan sonra doğrudan
-- `pairing.Confirm` — mevcut testler adı güncellenerek korunuyor
+- `pairing.Check` — kabul, saat kayması ve yanlış kayıt için ayrı ayrı
 
 **Elle duman testi kontrol listesi:**
 
@@ -310,8 +332,16 @@ tutuluyor: mantık yok, yalnızca çağrı ve yerleşim.
 izleyici bellek bütçesi testi değişmiyor; GUI için ayrı bir bütçe testi
 yazılmıyor (process kısa ömürlü, ölçüm gürültülü olur).
 
+Varsayılan ayarlarla ölçülen 52 MB hedefin çok üstündeydi. İzleyicideki aynı
+çare uygulandı: `debug.SetGCPercent(20)` ve her diyalog kapanışında
+`debug.FreeOSMemory()` + `winproc.Trim()`. Diyaloglar (QR görseli, çalışan
+process listesi) tepe yapıyor ve varsayılan ayarlarla o tepe kalıcı bir
+tabana dönüşüyordu. Ölçülen sonuç: **5,6 MB çalışma kümesi**. Özel bellek
+47 MB'ta kalıyor — bu Go çalışma zamanının ayırdığı adres alanı ve
+izleyicinin profiliyle aynı.
+
 **Gerileme sınırı.** Mevcut 225 testin hiçbirinin iddiası değişmiyor. İki
-dosyada yalnızca çağrılan ad güncelleniyor (`confirmPairing` → `Confirm`,
+dosyada yalnızca çağrılan ad güncelleniyor (`confirmPairing` → `Check`,
 `uninstall.Run`'un içi `Verify`/`Purge`'e ayrıldığı için testin kurduğu
 senaryo aynı kalıyor). Test sayısı yalnızca artabilir.
 
