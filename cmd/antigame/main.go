@@ -322,7 +322,11 @@ func runWatch(background bool) error {
 		return err
 	}
 	w, err := watch.New(watch.Options{
-		Dir:           dir,
+		Dir: dir,
+		// Kullanici veri klasorunu tasidiginda izleyici oraya gecmeli;
+		// yoksa kapi yeni klasore oturum acar, izleyici eskiye bakar ve
+		// oyunu oldurmeyi surdurur.
+		DirFunc:       config.Dir,
 		Cfg:           cfg,
 		List:          winproc.List,
 		Path:          winproc.Path,

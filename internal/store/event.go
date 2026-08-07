@@ -29,6 +29,10 @@ type Event struct {
 	// oyun bittiginde o oturumu acmis olan kisi. Kapi kurulmadan
 	// kaydedilen surelerde bostur.
 	Who string `json:"who,omitempty"`
+	// From ve To, veri klasoru tasindiginda eski ve yeni yoldur.
+	// Tasima kod istemiyor; gunluge dusmesi onu gorunur kiliyor.
+	From string `json:"from,omitempty"`
+	To   string `json:"to,omitempty"`
 }
 
 func monthFile(dir string, t time.Time) string {

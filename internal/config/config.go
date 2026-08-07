@@ -128,11 +128,6 @@ func FilePath(dir string) string {
 	return filepath.Join(dir, fileName)
 }
 
-// Dir, kalici veri dizinini dondurur: %LOCALAPPDATA%\antigame
-func Dir() string {
-	return filepath.Join(os.Getenv("LOCALAPPDATA"), "antigame")
-}
-
 func Default() *Config {
 	return &Config{
 		// Riot tarafinda istemci tek bir process degil: servis, Electron

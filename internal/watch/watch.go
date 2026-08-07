@@ -34,7 +34,13 @@ const (
 )
 
 type Options struct {
-	Dir           string
+	// Dir, veri klasorudur. Acilistaki degeri; klasor sonradan
+	// degisebilir, o yuzden kod icinde w.dir() kullanilir.
+	Dir string
+	// DirFunc, guncel veri klasorunu verir. Nil birakilirsa Dir sabit
+	// kabul edilir. Kullanici klasoru tasidiginda izleyicinin yeni yere
+	// gecmesi buna bagli.
+	DirFunc       func() string
 	Cfg           *config.Config
 	List          func() ([]winproc.Proc, error)
 	Path          func(int) (string, error)
@@ -81,6 +87,11 @@ type Watcher struct {
 	cfgMod       time.Time
 	cfgSize      int64
 
+	// cur, izleyicinin su an kullandigi veri klasorudur. Bir turun
+	// ortasinda degismemeli: yarisi eski yarisi yeni klasore yazilan bir
+	// tur, oturumu iki dosyaya bolerdi.
+	cur string
+
 	usageExe    string
 	usageDurS   int
 	usageActive int
@@ -94,6 +105,7 @@ func New(o Options) (*Watcher, error) {
 	}
 	w := &Watcher{
 		o:       o,
+		cur:     o.Dir,
 		st:      st,
 		running: make(map[int]*tracked),
 	}
@@ -125,6 +137,60 @@ func (w *Watcher) applyConfig(cfg *config.Config) {
 	w.launcherWindow = launcherWindow
 }
 
+// dir, izleyicinin su an kullandigi veri klasorunu verir.
+func (w *Watcher) dir() string { return w.cur }
+
+// reloadDir, veri klasoru degistiyse izleyiciyi yeni yere tasir.
+//
+// Klasoru arayuz degistirebiliyor ve arayuz ayri bir process. Izleyici
+// klasoru yalnizca acilista okursa: kapi yeni klasore oturum acar,
+// izleyici eskiye bakmaya devam eder, oturumu hic gormez ve oyunu
+// oldurmeyi surdurur.
+//
+// Klasorun yok olmasi da buraya dusuyor. Once store.Append hata verip
+// Run'i dondururdu, yani koruma tamamen dururdu; artik ayar yeniden
+// okunup yeni yere geciliyor.
+func (w *Watcher) reloadDir(now time.Time) error {
+	if w.o.DirFunc == nil {
+		return nil
+	}
+	next := w.o.DirFunc()
+	if next == "" || next == w.cur {
+		return nil
+	}
+
+	// Hedefin gercekten var olan bir dizin oldugu once dogrulaniyor.
+	// LoadState ve config.Load eksik dosyayi hata saymiyor (ilk
+	// calistirmada kurulum gerekmesin diye); tek baslarina gecerli
+	// olmayan bir yola gecmeyi engellemiyorlar.
+	if fi, err := os.Stat(next); err != nil || !fi.IsDir() {
+		return nil
+	}
+
+	// Yeni klasordeki durum ve liste okunuyor. Okunamiyorsa gecis
+	// yapilmiyor: yarim kurulmus bir hedefe gecmek, acik oturumu
+	// gorunmez kilardi.
+	st, err := store.LoadState(next)
+	if err != nil {
+		return nil
+	}
+	cfg, err := config.Load(next)
+	if err != nil {
+		return nil
+	}
+
+	old := w.cur
+	w.cur = next
+	w.st = st
+	w.applyConfig(cfg)
+	// Bir sonraki reloadConfig dosyayi taze saysin diye izler sifirlaniyor.
+	w.cfgMod, w.cfgSize = time.Time{}, 0
+
+	return store.Append(next, store.Event{
+		TS: now, Ev: "data_dir_changed", From: old, To: next,
+	})
+}
+
 // reloadConfig, config.json degistiyse listeyi yeniden okur.
 //
 // Listeyi menu ve tepsi degistirir, ama onlar ayri process. Izleyici ayari
@@ -139,7 +205,7 @@ func (w *Watcher) reloadConfig(now time.Time) error {
 	}
 	w.lastCfgCheck = now
 
-	fi, err := os.Stat(config.FilePath(w.o.Dir))
+	fi, err := os.Stat(config.FilePath(w.dir()))
 	if err != nil {
 		// Dosya yoksa veya okunamiyorsa bellektekini korumak tek dogru
 		// davranis: varsayilana donmek kullanicinin listesini sessizce
@@ -149,7 +215,7 @@ func (w *Watcher) reloadConfig(now time.Time) error {
 	if fi.ModTime().Equal(w.cfgMod) && fi.Size() == w.cfgSize {
 		return nil
 	}
-	cfg, err := config.Load(w.o.Dir)
+	cfg, err := config.Load(w.dir())
 	if err != nil {
 		// Yarim yazilmis dosya bir sonraki turda tekrar denenir.
 		return nil
@@ -161,13 +227,13 @@ func (w *Watcher) reloadConfig(now time.Time) error {
 		// Acilistaki ilk okuma degisiklik degil.
 		return nil
 	}
-	return store.Append(w.o.Dir, store.Event{TS: now, Ev: "config_reload"})
+	return store.Append(w.dir(), store.Event{TS: now, Ev: "config_reload"})
 }
 
 // Reload, durumu diskten yeniden okur. Kapi penceresi ayri bir process
 // oldugu icin oturumu o acar; izleyicinin degisikligi gormesi gerekir.
 func (w *Watcher) Reload() error {
-	st, err := store.LoadState(w.o.Dir)
+	st, err := store.LoadState(w.dir())
 	if err != nil {
 		return err
 	}
@@ -180,9 +246,15 @@ func (w *Watcher) Step(now time.Time) error {
 	// damgasi cagiranin saatinden gelir ve testler gercek zamana bagli olmaz.
 	if !w.started {
 		w.started = true
-		if err := store.Append(w.o.Dir, store.Event{TS: now, Ev: "watch_start"}); err != nil {
+		if err := store.Append(w.dir(), store.Event{TS: now, Ev: "watch_start"}); err != nil {
 			return err
 		}
+	}
+
+	// Veri klasoru degismis olabilir; her seyden once ona bakilir,
+	// yoksa bu turun yazilari eski klasore giderdi.
+	if err := w.reloadDir(now); err != nil {
+		return err
 	}
 
 	// Liste process disinda degismis olabilir; taramadan once tazelenir.
@@ -210,7 +282,7 @@ func (w *Watcher) Step(now time.Time) error {
 	gating := w.o.SecretReady == nil || w.o.SecretReady()
 	if !gating && !w.warnedNoSecret {
 		w.warnedNoSecret = true
-		if err := store.Append(w.o.Dir, store.Event{TS: now, Ev: "gate_disabled"}); err != nil {
+		if err := store.Append(w.dir(), store.Event{TS: now, Ev: "gate_disabled"}); err != nil {
 			return err
 		}
 	}
@@ -242,7 +314,7 @@ func (w *Watcher) Step(now time.Time) error {
 		if _, known := w.running[p.PID]; !known {
 			who := w.sessionOwner()
 			w.running[p.PID] = &tracked{exe: p.Exe, name: g.Name, start: now, who: who}
-			if err := store.Append(w.o.Dir, store.Event{
+			if err := store.Append(w.dir(), store.Event{
 				TS: now, Ev: "game_start", Exe: p.Exe, Name: g.Name, PID: p.PID, Who: who,
 			}); err != nil {
 				return err
@@ -272,7 +344,7 @@ func (w *Watcher) block(now time.Time, p winproc.Proc, name string) error {
 		// Process kendiliginden kapanmis olabilir; olayi yine de yazmayiz.
 		return nil
 	}
-	if err := store.Append(w.o.Dir, store.Event{
+	if err := store.Append(w.dir(), store.Event{
 		TS: now, Ev: "blocked", Exe: p.Exe, Name: name, PID: p.PID,
 	}); err != nil {
 		return err
@@ -300,7 +372,7 @@ func (w *Watcher) reapExited(now time.Time, seen map[int]bool) error {
 			continue
 		}
 		delete(w.running, pid)
-		if err := store.Append(w.o.Dir, store.Event{
+		if err := store.Append(w.dir(), store.Event{
 			TS:      now,
 			Ev:      "game_end",
 			Exe:     tr.exe,
@@ -374,7 +446,7 @@ func (w *Watcher) flushUsage(now time.Time) error {
 		w.usageExe, w.usageDurS, w.usageActive = "", 0, 0
 		return nil
 	}
-	err := store.Append(w.o.Dir, store.Event{
+	err := store.Append(w.dir(), store.Event{
 		TS: now, Ev: "usage", Exe: w.usageExe,
 		DurS: w.usageDurS, ActiveS: w.usageActive,
 	})
@@ -388,7 +460,7 @@ func (w *Watcher) flushUsage(now time.Time) error {
 func (w *Watcher) persist(now time.Time) error {
 	if now.Sub(w.lastHBEvent) >= hbEventEvery {
 		w.lastHBEvent = now
-		if err := store.Append(w.o.Dir, store.Event{TS: now, Ev: "hb"}); err != nil {
+		if err := store.Append(w.dir(), store.Event{TS: now, Ev: "hb"}); err != nil {
 			return err
 		}
 	}
@@ -396,11 +468,11 @@ func (w *Watcher) persist(now time.Time) error {
 		w.st.Heartbeat = now
 		w.lastHeartbeat = now
 		w.lastStateSave = now
-		return store.SaveState(w.o.Dir, w.st)
+		return store.SaveState(w.dir(), w.st)
 	}
 	if now.Sub(w.lastStateSave) >= stateSaveEvery {
 		w.lastStateSave = now
-		return store.SaveState(w.o.Dir, w.st)
+		return store.SaveState(w.dir(), w.st)
 	}
 	return nil
 }
@@ -414,10 +486,10 @@ func (w *Watcher) Shutdown(now time.Time) error {
 		return err
 	}
 	w.st.Heartbeat = now
-	if err := store.SaveState(w.o.Dir, w.st); err != nil {
+	if err := store.SaveState(w.dir(), w.st); err != nil {
 		return err
 	}
-	return store.Append(w.o.Dir, store.Event{TS: now, Ev: "watch_stop"})
+	return store.Append(w.dir(), store.Event{TS: now, Ev: "watch_stop"})
 }
 
 func (w *Watcher) Run(ctx context.Context) error {

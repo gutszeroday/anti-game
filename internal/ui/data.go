@@ -36,39 +36,80 @@ func showData(parent uintptr, dir string) {
 		"Windows hesabında açılabilir. Başka bir bilgisayara kopyalamak işe yaramaz.",
 		Rect{12, 322, 556, 40})
 
-	status := m.label("", Rect{12, 366, 350, 18})
+	status := m.label("", Rect{12, 366, 250, 34})
 
+	_, moveID := m.button("Taşı…", Rect{262, 390, 90, 28}, false)
 	_, openID := m.button("Klasörü aç", Rect{366, 390, 100, 28}, false)
 	_, closeID := m.button("Kapat", Rect{478, 390, 90, 28}, true)
 
-	var people []config.Person
-	if cfg, err := config.Load(dir); err == nil {
-		people = cfg.People
-	}
+	// cur, diyalogun gosterdigi klasordur. Tasima sonrasi degisiyor.
+	cur := dir
 
-	entries, err := datainfo.List(dir, people)
-	switch {
-	case err != nil:
-		setText(status, "Klasör okunamadı: "+err.Error())
-	case len(entries) == 0:
-		setText(status, "Klasör henüz oluşmamış — kurulum yapılmamış olabilir.")
-	default:
-		lvSetRows(list, dataRows(entries))
+	reload := func() {
+		setText(path, cur)
+		var people []config.Person
+		if cfg, err := config.Load(cur); err == nil {
+			people = cfg.People
+		}
+		entries, err := datainfo.List(cur, people)
+		switch {
+		case err != nil:
+			setText(status, "Klasör okunamadı: "+err.Error())
+			lvSetRows(list, nil)
+		case len(entries) == 0:
+			setText(status, "Klasör henüz oluşmamış — kurulum yapılmamış olabilir.")
+			lvSetRows(list, nil)
+		default:
+			lvSetRows(list, dataRows(entries))
+		}
 	}
+	reload()
 
 	m.onCmd = func(id int) {
 		switch id {
 		case closeID, idCancel, idOK:
 			m.close()
+
 		case openID:
-			if err := openFolder(dir); err != nil {
+			if err := openFolder(cur); err != nil {
 				setText(status, "Klasör açılamadı: "+err.Error())
+			}
+
+		case moveID:
+			to := pickFolder(m.hwnd, "Verilerin taşınacağı klasörü seçin")
+			if to == "" {
+				return
+			}
+			if !confirm(m.hwnd, "Veri klasörünü taşı",
+				"Bütün veriler şuraya taşınacak:\n\n"+to+
+					"\n\nAnahtarlar taşımadan etkilenmez; aynı bilgisayarda "+
+					"çalışmaya devam ederler. Devam edilsin mi?") {
+				return
+			}
+			res, err := moveData(cur, to, watcherLive(), config.SetDir,
+				func(s string) { setText(status, s) })
+			if err != nil {
+				setText(status, err.Error())
+				return
+			}
+			cur = to
+			reload()
+			setText(status, res.Note)
+			if res.OldKept {
+				warn(m.hwnd, "antigame", res.Note)
 			}
 		}
 	}
 
 	focus(path)
 	m.run(parent)
+}
+
+// watcherLive, izleyicinin ayakta olup olmadigini soyler. Tasima, eski
+// klasoru silmeden once izleyicinin yeni yere gectigini beklemek zorunda;
+// izleyici yoksa beklenecek bir sey yok.
+func watcherLive() bool {
+	return cur != nil && cur.watcherRunning()
 }
 
 func dataRows(es []datainfo.Entry) []Row {
