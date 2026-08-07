@@ -213,3 +213,55 @@ func TestReadCodeWarnsBeforeShowingKey(t *testing.T) {
 		t.Errorf("anahtar uyarisiz gosterildi:\n%s", out)
 	}
 }
+
+func TestCheckAcceptsValidCode(t *testing.T) {
+	secret := []byte("12345678901234567890")
+	now := time.Unix(1_700_000_000, 0).UTC()
+	code := totp.Code(secret, totp.Counter(now))
+
+	counter, ok, msg := Check(secret, code, now)
+	if !ok {
+		t.Fatalf("gecerli kod reddedildi: %s", msg)
+	}
+	if counter != totp.Counter(now) {
+		t.Errorf("sayac %d, istenen %d", counter, totp.Counter(now))
+	}
+}
+
+func TestCheckExplainsClockSkew(t *testing.T) {
+	secret := []byte("12345678901234567890")
+	now := time.Unix(1_700_000_000, 0).UTC()
+	code := totp.Code(secret, totp.Counter(now.Add(5*time.Minute)))
+
+	_, ok, msg := Check(secret, code, now)
+	if ok {
+		t.Fatal("kaymis kod kabul edildi")
+	}
+	if !strings.Contains(msg, "saati") {
+		t.Errorf("mesaj saat kaymasindan bahsetmiyor: %q", msg)
+	}
+}
+
+func TestCheckExplainsWrongEntry(t *testing.T) {
+	secret := []byte("12345678901234567890")
+	now := time.Unix(1_700_000_000, 0).UTC()
+
+	_, ok, msg := Check(secret, "000000", now)
+	if ok {
+		t.Fatal("alakasiz kod kabul edildi")
+	}
+	if !strings.Contains(msg, "eşleşmiyor") {
+		t.Errorf("mesaj yanlis kaydi anlatmiyor: %q", msg)
+	}
+}
+
+func TestQRImageIsSquareAndNonEmpty(t *testing.T) {
+	img, err := QRImage("otpauth://totp/test?secret=AAAA", 256)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b := img.Bounds()
+	if b.Dx() != b.Dy() || b.Dx() == 0 {
+		t.Errorf("kare olmayan veya bos gorsel: %v", b)
+	}
+}

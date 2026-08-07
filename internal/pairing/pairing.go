@@ -15,6 +15,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"image"
 	"io"
 	"net/url"
 	"os"
@@ -36,7 +37,10 @@ func NewSecret() ([]byte, error) {
 	return s, nil
 }
 
-func encodeKey(secret []byte) string {
+// EncodeKey, anahtari authenticator uygulamalarinin bekledigi base32
+// gosterime cevirir. Disa acik: arayuz, anahtari elle girmek isteyen
+// kullaniciya gostermek icin ham base32'ye ihtiyac duyuyor.
+func EncodeKey(secret []byte) string {
 	return base32.StdEncoding.WithPadding(base32.NoPadding).EncodeToString(secret)
 }
 
@@ -52,7 +56,7 @@ func GroupKey(b32 string) string {
 }
 
 func OTPAuthURI(secret []byte, account string) string {
-	b32 := encodeKey(secret)
+	b32 := EncodeKey(secret)
 	q := url.Values{}
 	q.Set("secret", b32)
 	q.Set("issuer", "anti-game")
@@ -119,48 +123,66 @@ Anahtar: %s
 	}
 }
 
+// Check, tek bir eslestirme kodunu dogrular. Kabul edilirse kodun sayacini
+// dondurur; reddedilirse kullaniciya gosterilecek aciklamayi.
+//
+// Karar burada veriliyor cunku iki kabuk da ayni cevabi vermek zorunda:
+// metin sihirbazi bunu donguye sarar, pencere tek atista cagirir.
+// "Kod hatali" demek yetmiyordu; saat kaymasiyla yanlis kaydi ayirmak
+// kullanicinin ne yapacagini degistiriyor.
+func Check(secret []byte, code string, now time.Time) (uint64, bool, string) {
+	counter, res := totp.Verify(secret, code, now, 0)
+	if res == totp.ResultOK {
+		return counter, true, ""
+	}
+
+	// Kod dogru anahtardan uretilmis ama pencereye girmiyorsa sorun
+	// saatlerin uyusmamasidir; bunu miktariyla soylemek gerekiyor.
+	if skew, ok := totp.FindSkew(secret, code, now); ok {
+		yon := "ileri"
+		if skew < 0 {
+			yon, skew = "geri", -skew
+		}
+		return 0, false, fmt.Sprintf(
+			"Anahtar doğru, ama kodu üreten cihazın saati %d dakika %s. "+
+				"Telefonda saati otomatik ayara alın (Google Authenticator: "+
+				"Ayarlar > Zaman düzeltmesi > Kodlar için saati eşitle), sonra yeni kodu girin.",
+			int(skew.Round(time.Minute).Minutes()), yon)
+	}
+	return 0, false, `Bu kod anahtarla eşleşmiyor. Uygulamada "anti-game" kaydını ` +
+		"seçtiğinizden emin olun; başka bir hesabın kodu girilmiş olabilir."
+}
+
+// QRImage, eslestirme URI'sini kare bir gorsele cevirir. Pencere QR'i
+// kendi icinde cizdigi icin PNG'ye gerek yok. go-qrcode yalnizca bu
+// paketten cagrilir (bkz. paket yorumu).
+func QRImage(uri string, size int) (image.Image, error) {
+	q, err := qrcode.New(uri, qrcode.Medium)
+	if err != nil {
+		return nil, err
+	}
+	return q.Image(size), nil
+}
+
 // confirmPairing, dogru kod girilene kadar sorar ve kabul edilen kodun
 // sayacini dondurur. Bos satir kurulumu iptal eder.
 //
 // Yanlis kodda pes edilmiyor: eskiden tek hata secret'i cope atiyor ve
-// QR'in bastan okutulmasini gerektiriyordu. Hata sebebi de soyleniyor,
-// cunku "kod hatali" mesaji saat kaymasiyla yanlis kaydi ayirt etmiyordu.
+// QR'in bastan okutulmasini gerektiriyordu.
 func confirmPairing(r *bufio.Reader, out io.Writer, secret []byte, now func() time.Time, onReveal func() error) (uint64, error) {
 	for {
-		code, err := readCode(r, out, encodeKey(secret), onReveal)
+		code, err := readCode(r, out, EncodeKey(secret), onReveal)
 		if err != nil && code == "" {
 			return 0, err
 		}
 		if code == "" {
 			return 0, errors.New("kod girilmedi, eşleştirme iptal edildi")
 		}
-
-		t := now()
-		counter, res := totp.Verify(secret, code, t, 0)
-		if res == totp.ResultOK {
+		counter, ok, msg := Check(secret, code, now())
+		if ok {
 			return counter, nil
 		}
-
-		// Kod dogru anahtardan uretilmis ama pencereye girmiyorsa sorun
-		// saatlerin uyusmamasidir; bunu miktariyla soylemek gerekiyor.
-		if skew, ok := totp.FindSkew(secret, code, t); ok {
-			yon := "ileri"
-			if skew < 0 {
-				yon, skew = "geri", -skew
-			}
-			fmt.Fprintf(out, `
-Anahtar doğru, ama kodu üreten cihazın saati %d dakika %s.
-Telefonda saati otomatik ayara alın (Google Authenticator:
-Ayarlar > Zaman düzeltmesi > Kodlar için saati eşitle), sonra yeni kodu girin.
-
-`, int(skew.Round(time.Minute).Minutes()), yon)
-			continue
-		}
-		fmt.Fprint(out, `
-Bu kod anahtarla eşleşmiyor. Uygulamada "anti-game" kaydını seçtiğinizden
-emin olun; başka bir hesabın kodu girilmiş olabilir. Çıkmak için boş bırakıp Enter.
-
-`)
+		fmt.Fprintf(out, "\n%s Çıkmak için boş bırakıp Enter.\n\n", msg)
 	}
 }
 

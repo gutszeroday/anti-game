@@ -50,7 +50,7 @@ func TestManualKeyRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	shown := GroupKey(encodeKey(secret))
+	shown := GroupKey(EncodeKey(secret))
 
 	raw, err := base32.StdEncoding.WithPadding(base32.NoPadding).
 		DecodeString(strings.ReplaceAll(shown, " ", ""))
