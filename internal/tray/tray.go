@@ -28,6 +28,37 @@ type Item struct {
 	Default bool
 }
 
+// Options, tepsi simgesinin davranisidir.
+type Options struct {
+	// Tip, TipFunc yokken kullanilan sabit tooltip metnidir.
+	Tip string
+	// TipFunc, tooltip'i tazelemek icin dakikada bir cagrilir. nil ise
+	// zamanlayici hic kurulmaz: degismeyen bir metni saydirmak bosuna
+	// uyanma demektir.
+	TipFunc func() string
+	Items   []Item
+	// OnClick, simgeye sol tiklandiginda calisir.
+	OnClick func()
+}
+
+// tooltipMax, Shell_NotifyIcon'in SzTip alanidir: 128 uint16'nin sonuncusu
+// sonlandiriciya ayrilir.
+const tooltipMax = 127
+
+// tipText, o an gosterilecek tooltip metnini verir. Sinira takilan metin
+// kirpilir; Windows uzun metni sessizce atardi.
+func (o Options) tipText() string {
+	s := o.Tip
+	if o.TipFunc != nil {
+		s = o.TipFunc()
+	}
+	r := []rune(s)
+	if len(r) > tooltipMax {
+		r = r[:tooltipMax]
+	}
+	return string(r)
+}
+
 // defaultItem, cift tiklamada calisacak ogenin sirasini verir.
 // Isaretli oge yoksa -1.
 func defaultItem(items []Item) int {
@@ -61,12 +92,16 @@ var (
 	procSetForeground   = user32.NewProc("SetForegroundWindow")
 	procGetCursorPos    = user32.NewProc("GetCursorPos")
 	procMessageBox      = user32.NewProc("MessageBoxW")
+	procSetTimer        = user32.NewProc("SetTimer")
+	procKillTimer       = user32.NewProc("KillTimer")
+	procDblClickTime    = user32.NewProc("GetDoubleClickTime")
 	procShellNotifyIcon = shell32.NewProc("Shell_NotifyIconW")
 	procGetModuleHandle = kernel32.NewProc("GetModuleHandleW")
 )
 
 const (
 	wmDestroy     = 0x0002
+	wmTimer       = 0x0113
 	wmRButtonUp   = 0x0205
 	wmLButtonUp   = 0x0202
 	wmLButtonDbl  = 0x0203
@@ -75,7 +110,17 @@ const (
 	wmTrayQuit    = wmApp + 2
 
 	nimAdd    = 0x0000
+	nimModify = 0x0001
 	nimDelete = 0x0002
+
+	// idTipTimer tooltip'i tazeler, idClickTimer tek tiki cift tiktan
+	// ayirmak icin bekler.
+	idTipTimer   = 1
+	idClickTimer = 2
+
+	// tipPeriodMS, tooltip tazeleme araligidir. Kalan sure dakika
+	// biriminde yaziliyor; daha sik uyanmak bir sey kazandirmaz.
+	tipPeriodMS = 60_000
 
 	nifMessage = 0x0001
 	nifIcon    = 0x0002
@@ -140,7 +185,7 @@ type notifyIconData struct {
 
 // Pencere durumu paket duzeyinde: WndProc bir C geri cagrimidir ve kapali
 // degisken tasiyamaz. Process basina tek tepsi simgesi acildigi icin guvenli.
-var curItems []Item
+var curOpts Options
 
 // Pencere sinifi process basina bir kez kaydedilir; ikinci kayit
 // "sinif zaten var" hatasi verir.
@@ -186,7 +231,7 @@ func showMenu(hwnd uintptr) {
 	}
 	defer procDestroyMenu.Call(m)
 
-	for i, it := range curItems {
+	for i, it := range curOpts.Items {
 		procAppendMenu.Call(m, mfString, uintptr(idFirst+i),
 			uintptr(unsafe.Pointer(utf16(it.Label))))
 	}
@@ -200,12 +245,27 @@ func showMenu(hwnd uintptr) {
 	cmd, _, _ := procTrackPopupMenu.Call(m, tpmRightButton|tpmReturnCmd,
 		uintptr(pt.X), uintptr(pt.Y), 0, hwnd, 0)
 	i := int(cmd) - idFirst
-	if i < 0 || i >= len(curItems) || curItems[i].Run == nil {
+	if i < 0 || i >= len(curOpts.Items) || curOpts.Items[i].Run == nil {
 		return
 	}
 	// Eylem mesaj dongusunu bloklamamali: rapor tarayici aciyor, bilgi
 	// kutusu kendi modal dongusunu kuruyor.
-	go curItems[i].Run()
+	go curOpts.Items[i].Run()
+}
+
+// refreshTip, tooltip metnini tazeler. Yalnizca NIF_TIP gonderiliyor:
+// simge ve geri cagrim mesaji zaten kayitli, onlari tekrar yazmak
+// simgeyi yanip sondururdu. Basarisizlik sessizce geciliyor; tooltip bir
+// kolaylik, isin kendisi degil.
+func refreshTip(hwnd uintptr) {
+	nid := notifyIconData{
+		HWnd:   windows.Handle(hwnd),
+		UID:    1,
+		UFlags: nifTip,
+	}
+	nid.CbSize = uint32(unsafe.Sizeof(nid))
+	copy(nid.SzTip[:len(nid.SzTip)-1], windows.StringToUTF16(curOpts.tipText()))
+	procShellNotifyIcon.Call(nimModify, uintptr(unsafe.Pointer(&nid)))
 }
 
 func wndProc(hwnd, message, wparam, lparam uintptr) uintptr {
@@ -215,13 +275,35 @@ func wndProc(hwnd, message, wparam, lparam uintptr) uintptr {
 		case wmRButtonUp:
 			showMenu(hwnd)
 			return 0
-		case wmLButtonDbl:
-			// Cift tiklama tek tiklamayi da uretir; sol tik menuyu
-			// acsaydi menu acilip hemen kapanirdi. Windows'ta tepsi
-			// menusu zaten sag tikla acilir.
-			if i := defaultItem(curItems); i >= 0 && curItems[i].Run != nil {
-				go curItems[i].Run()
+		case wmLButtonUp:
+			// Cift tiklama once tek tiklamayi uretir. Ikisini ayirmanin
+			// tek yolu cift tik esigi kadar beklemek; beklemeden
+			// calistirilinca hem kutu hem arayuz aciliyordu.
+			if curOpts.OnClick != nil {
+				d, _, _ := procDblClickTime.Call()
+				procSetTimer.Call(hwnd, idClickTimer, d, 0)
 			}
+			return 0
+		case wmLButtonDbl:
+			// Bekleyen tek tik iptal edilir; kullanici arayuzu istedi.
+			procKillTimer.Call(hwnd, idClickTimer)
+			if i := defaultItem(curOpts.Items); i >= 0 && curOpts.Items[i].Run != nil {
+				go curOpts.Items[i].Run()
+			}
+			return 0
+		}
+	case wmTimer:
+		switch wparam {
+		case idClickTimer:
+			procKillTimer.Call(hwnd, idClickTimer)
+			// Eylem mesaj dongusunu bloklamamali: bilgi kutusu kendi
+			// modal dongusunu kuruyor.
+			if curOpts.OnClick != nil {
+				go curOpts.OnClick()
+			}
+			return 0
+		case idTipTimer:
+			refreshTip(hwnd)
 			return 0
 		}
 	case wmTrayQuit, wmDestroy:
@@ -237,11 +319,11 @@ func wndProc(hwnd, message, wparam, lparam uintptr) uintptr {
 //
 // Cagiran goroutine bir OS thread'ine kilitleniyor: pencere mesajlari
 // yalnizca pencereyi olusturan thread'e teslim edilir.
-func Run(ctx context.Context, tip string, items []Item) error {
+func Run(ctx context.Context, o Options) error {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
 
-	curItems = items
+	curOpts = o
 
 	if err := registerClass(); err != nil {
 		return err
@@ -268,12 +350,17 @@ func Run(ctx context.Context, tip string, items []Item) error {
 		HIcon:            windows.Handle(icon),
 	}
 	nid.CbSize = uint32(unsafe.Sizeof(nid))
-	copy(nid.SzTip[:len(nid.SzTip)-1], windows.StringToUTF16(tip))
+	copy(nid.SzTip[:len(nid.SzTip)-1], windows.StringToUTF16(o.tipText()))
 
 	if r, _, err := procShellNotifyIcon.Call(nimAdd, uintptr(unsafe.Pointer(&nid))); r == 0 {
 		return fmt.Errorf("tepsi simgesi eklenemedi: %w", err)
 	}
 	defer procShellNotifyIcon.Call(nimDelete, uintptr(unsafe.Pointer(&nid)))
+
+	if o.TipFunc != nil {
+		procSetTimer.Call(hwnd, idTipTimer, tipPeriodMS, 0)
+		defer procKillTimer.Call(hwnd, idTipTimer)
+	}
 
 	if ctx != nil {
 		go func() {

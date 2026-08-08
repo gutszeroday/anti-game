@@ -4,6 +4,7 @@ package tray
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 )
@@ -12,8 +13,9 @@ func TestRunAddsIconAndExitsOnCancel(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
 	go func() {
-		done <- Run(ctx, "antigame — test", []Item{
-			{Label: "Bir şey", Run: func() {}},
+		done <- Run(ctx, Options{
+			Tip:   "antigame — test",
+			Items: []Item{{Label: "Bir şey", Run: func() {}}},
 		})
 	}()
 
@@ -34,7 +36,7 @@ func TestRunAddsIconAndExitsOnCancel(t *testing.T) {
 func TestRunWithoutItemsStillExits(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
-	go func() { done <- Run(ctx, "antigame", nil) }()
+	go func() { done <- Run(ctx, Options{Tip: "antigame"}) }()
 
 	time.Sleep(200 * time.Millisecond)
 	cancel()
@@ -72,5 +74,26 @@ func TestDefaultItemTakesTheFirstMark(t *testing.T) {
 func TestDefaultItemOnEmptyList(t *testing.T) {
 	if got := defaultItem(nil); got != -1 {
 		t.Errorf("defaultItem = %d, istenen -1", got)
+	}
+}
+
+func TestTipTextPrefersTipFunc(t *testing.T) {
+	o := Options{Tip: "sabit", TipFunc: func() string { return "canlı" }}
+	if got := o.tipText(); got != "canlı" {
+		t.Errorf("tipText = %q, istenen \"canlı\"", got)
+	}
+	o.TipFunc = nil
+	if got := o.tipText(); got != "sabit" {
+		t.Errorf("TipFunc yokken tipText = %q, istenen \"sabit\"", got)
+	}
+}
+
+func TestTipTextTrimsToTheTooltipLimit(t *testing.T) {
+	// Windows sinira takilan metni sessizce atiyor; kirpilmis metin
+	// atilmis metinden iyi.
+	long := strings.Repeat("a", 300)
+	o := Options{TipFunc: func() string { return long }}
+	if n := len([]rune(o.tipText())); n != tooltipMax {
+		t.Errorf("tooltip %d karakter, istenen %d", n, tooltipMax)
 	}
 }

@@ -363,7 +363,14 @@ func runWatch(background bool) error {
 	watcher := make(chan error, 1)
 	go func() { watcher <- w.Run(ctx) }()
 
-	if err := tray.Run(ctx, "antigame — izleyici çalışıyor", trayItems(dir)); err != nil {
+	if err := tray.Run(ctx, tray.Options{
+		Tip: "antigame — izleyici çalışıyor",
+		// Tooltip ve sol tik ayni cumleyi gosteriyor: kullanicinin
+		// sordugu tek sey ne kadar suresi kaldigi.
+		TipFunc: func() string { return "antigame — " + briefText(dir) },
+		Items:   trayItems(dir),
+		OnClick: func() { tray.Info("antigame", briefText(dir)) },
+	}); err != nil {
 		// Tepsi acilamazsa izleyici yine de calismali; simge bir kolaylik,
 		// isin kendisi degil.
 		fmt.Fprintf(os.Stderr, "uyarı: tepsi simgesi açılamadı: %v\n", err)
@@ -371,6 +378,34 @@ func runWatch(background bool) error {
 	}
 	stop()
 	return <-watcher
+}
+
+// briefText, kalan sureyi tek satirda verir. Okunamazsa nedeni yaziliyor:
+// arka planda calisan izleyicinin hatayi soyleyecek baska yeri yok.
+func briefText(dir string) string {
+	s, err := status.Brief(dir, time.Now().UTC())
+	if err != nil {
+		return "Durum okunamadı: " + err.Error()
+	}
+	return s
+}
+
+// openManualGate, oyun acmadan kod girme penceresini ayri process olarak
+// baslatir. Kapinin kendi mesaj dongusu var; cagiranin dongusu icine
+// ikincisini kurmak ikisini de kilitlerdi.
+func openManualGate(dir string) {
+	if open, err := status.SessionOpen(dir, time.Now().UTC()); err == nil && open {
+		tray.Info("antigame", "Oturum zaten açık. "+briefText(dir))
+		return
+	}
+	exe, err := os.Executable()
+	if err != nil {
+		tray.Info("antigame", "Program yolu bulunamadı: "+err.Error())
+		return
+	}
+	if err := exec.Command(exe, "gate", "--manual").Start(); err != nil {
+		tray.Info("antigame", "Kod penceresi açılamadı: "+err.Error())
+	}
 }
 
 func trayItems(dir string) []tray.Item {
@@ -389,6 +424,7 @@ func trayItems(dir string) []tray.Item {
 				tray.Info("antigame", "Arayüz açılamadı: "+err.Error())
 			}
 		}},
+		{Label: "Kod gir…", Run: func() { openManualGate(dir) }},
 		{Label: "Haftalık raporu aç", Run: func() {
 			if _, err := report.Run(dir); err != nil {
 				tray.Info("antigame", "Rapor açılamadı: "+err.Error())

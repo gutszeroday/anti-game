@@ -32,6 +32,16 @@ func freshWindow(cfg *config.Config) time.Duration {
 	return max(3*time.Duration(cfg.PollMS)*time.Millisecond, 15*time.Second)
 }
 
+// launcherWindow, son gercek oyundan sonra oturumun kalan omrudur.
+// Ayar yazilmamis eski config.json'larda sifir geliyor; sifir pencere
+// oturumu aninda dusururdu.
+func launcherWindow(cfg *config.Config) time.Duration {
+	if cfg.LauncherWindowMinutes <= 0 {
+		return 45 * time.Minute
+	}
+	return time.Duration(cfg.LauncherWindowMinutes) * time.Minute
+}
+
 // fmtDur, kalan sureyi kisa ve asagi yuvarlayarak yazar. Yukari
 // yuvarlamak kalan sureyi oldugundan uzun gosterir; kullanici ona guvenip
 // oyunu gec acardi.
@@ -49,6 +59,22 @@ func fmtDur(d time.Duration) string {
 	default:
 		return fmt.Sprintf("%d dk %d sn", m, s)
 	}
+}
+
+// SessionOpen, su anda gecerli bir oturum olup olmadigini soyler. Manuel
+// kod girisini sunan yerler bunu soruyor: acik oturumda kullaniciyi kod
+// istemeye gondermek gereksiz.
+func SessionOpen(dir string, now time.Time) (bool, error) {
+	cfg, err := config.Load(dir)
+	if err != nil {
+		return false, err
+	}
+	st, err := store.LoadState(dir)
+	if err != nil {
+		return false, err
+	}
+	return session.Active(st, now,
+		time.Duration(cfg.GraceMinutes)*time.Minute, launcherWindow(cfg)), nil
 }
 
 // Brief, kalan sureyi tek satirda anlatir. Tepsi tooltip'i 128 karakterle
@@ -70,11 +96,7 @@ func Brief(dir string, now time.Time) (string, error) {
 // acilmadi, oyun acik, oyun kapandi.
 func briefLine(cfg *config.Config, st *store.State, now time.Time) string {
 	grace := time.Duration(cfg.GraceMinutes) * time.Minute
-	launcherWindow := time.Duration(cfg.LauncherWindowMinutes) * time.Minute
-	if launcherWindow <= 0 {
-		launcherWindow = 45 * time.Minute
-	}
-	left := session.Remaining(st, now, grace, launcherWindow)
+	left := session.Remaining(st, now, grace, launcherWindow(cfg))
 	if left <= 0 {
 		return "Oturum kapalı — oyun açmak için kod gerekiyor."
 	}
@@ -100,13 +122,9 @@ func Text(dir string, now time.Time) (string, error) {
 	}
 
 	grace := time.Duration(cfg.GraceMinutes) * time.Minute
-	launcherWindow := time.Duration(cfg.LauncherWindowMinutes) * time.Minute
-	if launcherWindow <= 0 {
-		launcherWindow = 45 * time.Minute
-	}
 	var b strings.Builder
 
-	if left := session.Remaining(st, now, grace, launcherWindow); left > 0 {
+	if left := session.Remaining(st, now, grace, launcherWindow(cfg)); left > 0 {
 		// Kalan sure tek yerden yaziliyor: tepside ve burada ayri
 		// cumleler kurulunca ikisi birbirinden kayiyordu.
 		fmt.Fprintf(&b, "Oturum: açık%s\n%s\n", openedBy(cfg, st), briefLine(cfg, st, now))
