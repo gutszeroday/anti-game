@@ -48,6 +48,9 @@ func Scale(dpi uint32, v int32) int32 {
 //
 // Kisiler ve Kaldir burada yok: menu cubuguna tasindilar. Alt sirada
 // besinci dugme en kucuk pencere genisligine sigmiyordu.
+//
+// CodeBtn, oyun acmadan kod girmek icindir; alt siranin ucuncusu olarak
+// 560 piksele sigiyor.
 type MainLayout struct {
 	Status     Rect
 	GamesLabel Rect
@@ -58,6 +61,7 @@ type MainLayout struct {
 	Note       Rect
 	WatchBtn   Rect
 	ReportBtn  Rect
+	CodeBtn    Rect
 }
 
 // Main, verilen istemci alani icin yerlesimi hesaplar.
@@ -80,7 +84,7 @@ func Main(w, h int32, dpi uint32) MainLayout {
 	// Alt siradan geriye dogru: dugme sirasi, not, baslangic kutusu.
 	bh, bw := s(btnH), s(btnW)
 	btnY := h - p - bh
-	for i, r := range []*Rect{&l.WatchBtn, &l.ReportBtn} {
+	for i, r := range []*Rect{&l.WatchBtn, &l.ReportBtn, &l.CodeBtn} {
 		*r = Rect{left + int32(i)*(bw+g), btnY, bw, bh}
 	}
 

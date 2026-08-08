@@ -51,7 +51,7 @@ func TestMainKeepsEverythingInsideTheWindow(t *testing.T) {
 	for name, r := range map[string]Rect{
 		"status": l.Status, "games": l.Games,
 		"add": l.AddBtn, "remove": l.RemoveBtn,
-		"watch": l.WatchBtn, "report": l.ReportBtn,
+		"watch": l.WatchBtn, "report": l.ReportBtn, "code": l.CodeBtn,
 	} {
 		if r.X < 0 || r.Y < 0 || r.X+r.W > w || r.Y+r.H > h {
 			t.Errorf("%s pencere disinda: %+v", name, r)
@@ -61,10 +61,13 @@ func TestMainKeepsEverythingInsideTheWindow(t *testing.T) {
 
 func TestMainButtonsDoNotOverlapHorizontally(t *testing.T) {
 	l := Main(640, 520, 96)
-	row := []Rect{l.WatchBtn, l.ReportBtn}
+	row := []Rect{l.WatchBtn, l.ReportBtn, l.CodeBtn}
 	for i := 1; i < len(row); i++ {
 		if row[i-1].X+row[i-1].W > row[i].X {
 			t.Errorf("%d. ve %d. dugme cakisiyor", i-1, i)
+		}
+		if row[i].Y != row[0].Y {
+			t.Errorf("%d. dugme alt siradan cikti", i)
 		}
 	}
 	if l.AddBtn.X+l.AddBtn.W > l.RemoveBtn.X {
@@ -91,12 +94,12 @@ func TestMainPinsButtonsToTheBottom(t *testing.T) {
 	}
 }
 
-// Kisiler ve Kaldir menu cubugana tasindi; alt sirada iki dugme kaldi.
-// Besinci dugme en kucuk pencere boyutunda tasiyordu.
+// Kisiler ve Kaldir menu cubuguna tasindi; alt sirada uc dugme var.
+// Besincisi en kucuk pencere boyutunda tasiyordu.
 func TestMainBottomRowHasRoomAtTheMinimumWidth(t *testing.T) {
 	l := Main(MinW, MinH, 96)
-	if l.ReportBtn.X+l.ReportBtn.W > MinW-pad {
-		t.Errorf("alt sira en kucuk genislige sigmiyor: %+v", l.ReportBtn)
+	if l.CodeBtn.X+l.CodeBtn.W > MinW-pad {
+		t.Errorf("alt sira en kucuk genislige sigmiyor: %+v", l.CodeBtn)
 	}
 }
 

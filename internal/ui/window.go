@@ -4,6 +4,7 @@ package ui
 
 import (
 	"fmt"
+	"os/exec"
 	"strings"
 	"time"
 	"unsafe"
@@ -26,6 +27,7 @@ const (
 	idAutoStart
 	idWatch
 	idReport
+	idCode
 	idPeople
 	idUninstall
 	idDataInfo
@@ -62,6 +64,7 @@ type mainWindow struct {
 	note       uintptr
 	watchBtn   uintptr
 	reportBtn  uintptr
+	codeBtn    uintptr
 
 	// cfg, son okunan yapilandirmadir; "Cikar" dugmesi secili satirin
 	// exe adini buradan bulur.
@@ -137,6 +140,7 @@ func (w *mainWindow) build() {
 
 	w.watchBtn = create("BUTTON", "İzleyiciyi başlat", bsPushButton|wsTabStop, 0, z, w.hwnd, idWatch, w.font)
 	w.reportBtn = create("BUTTON", "Haftalık rapor", bsPushButton|wsTabStop, 0, z, w.hwnd, idReport, w.font)
+	w.codeBtn = create("BUTTON", "Kod gir…", bsPushButton|wsTabStop, 0, z, w.hwnd, idCode, w.font)
 }
 
 func (w *mainWindow) relayout() {
@@ -146,7 +150,7 @@ func (w *mainWindow) relayout() {
 		w.status: l.Status, w.gamesLabel: l.GamesLabel, w.games: l.Games,
 		w.addBtn: l.AddBtn, w.removeBtn: l.RemoveBtn,
 		w.autoStart: l.AutoStart, w.note: l.Note,
-		w.watchBtn: l.WatchBtn, w.reportBtn: l.ReportBtn,
+		w.watchBtn: l.WatchBtn, w.reportBtn: l.ReportBtn, w.codeBtn: l.CodeBtn,
 	} {
 		move(h, r)
 	}
@@ -296,6 +300,9 @@ func (w *mainWindow) onCommand(id int) {
 		}
 		w.setNote("Rapor tarayıcıda açıldı: " + path)
 
+	case idCode:
+		w.openManualGate()
+
 	case idPeople:
 		showPeople(w.hwnd, w.dir)
 		w.refresh()
@@ -320,6 +327,37 @@ func (w *mainWindow) onCommand(id int) {
 				"Süre kayıtları haftalık raporda toplanıyor.\n\n"+
 				"Veri klasörü:\n"+w.dir)
 	}
+}
+
+// openManualGate, oyun acmadan kod girme penceresini acar. Kapi ayri bir
+// process olarak baslatiliyor: kendi mesaj dongusu var ve bu pencerenin
+// dongusu icine ikincisini kurmak ikisini de kilitlerdi.
+//
+// Oturum zaten aciksa kapi hic acilmiyor; kullanicinin kod istemesi
+// gereksiz, kalan sureyi soylemek yeterli.
+func (w *mainWindow) openManualGate() {
+	now := time.Now().UTC()
+	if open, err := status.SessionOpen(w.dir, now); err == nil && open {
+		s, err := status.Brief(w.dir, now)
+		if err != nil {
+			s = "Oturum zaten açık."
+		}
+		w.setNote(s)
+		return
+	}
+	if w.deps.ExePath == nil {
+		return
+	}
+	exe, err := w.deps.ExePath()
+	if err != nil {
+		w.setNote("Program yolu bulunamadı: " + err.Error())
+		return
+	}
+	if err := exec.Command(exe, "gate", "--manual").Start(); err != nil {
+		w.setNote("Kod penceresi açılamadı: " + err.Error())
+		return
+	}
+	w.setNote("Kod penceresi açıldı.")
 }
 
 // toggleAutoStart, oturum acilisinda baslatan zamanlanmis gorevi kurar
