@@ -22,6 +22,8 @@ import (
 	"github.com/guts/antigame/internal/auth"
 	"github.com/guts/antigame/internal/config"
 	"github.com/guts/antigame/internal/people"
+	"github.com/guts/antigame/internal/session"
+	"github.com/guts/antigame/internal/store"
 	"github.com/guts/antigame/internal/vault"
 )
 
@@ -101,6 +103,51 @@ func AcquireSingleInstance() (func(), bool) {
 		return func() {}, false
 	}
 	return func() { windows.CloseHandle(h) }, true
+}
+
+// ErrSessionOpen, oturum zaten acikken manuel kapinin acilmadigini soyler.
+// Acik oturumda kod istemek kullaniciyi bosuna arkadasina gonderirdi.
+var ErrSessionOpen = errors.New("oturum zaten açık")
+
+// title, pencere basligini uretir. Manuel giriste oyun adi yoktur.
+func title(app string) string {
+	if app == "" {
+		return "Kod girişi"
+	}
+	return fmt.Sprintf("%s kapıda durduruldu", app)
+}
+
+// prompt, penceredeki ilk satiri uretir.
+func prompt(app string) string {
+	if app == "" {
+		return "Oyun açmadan kod girebilirsiniz."
+	}
+	return fmt.Sprintf("%s açılmadan önce MFA kodu gerekiyor.", app)
+}
+
+// RunManual, oyun acilmadan kod girmek icin kapiyi acar. Kod gecerliyse
+// oturum acilir; kullanicinin oyunu baslatmak icin odemesiz sure kadar
+// vakti olur.
+//
+// Oturum zaten aciksa pencere acilmaz: kullanicinin kod istemesi gereksiz.
+func RunManual(dir string) error {
+	cfg, err := config.Load(dir)
+	if err != nil {
+		return err
+	}
+	st, err := store.LoadState(dir)
+	if err != nil {
+		return err
+	}
+	launcherWindow := time.Duration(cfg.LauncherWindowMinutes) * time.Minute
+	if launcherWindow <= 0 {
+		launcherWindow = 45 * time.Minute
+	}
+	if session.Active(st, time.Now().UTC(),
+		time.Duration(cfg.GraceMinutes)*time.Minute, launcherWindow) {
+		return ErrSessionOpen
+	}
+	return Run(dir, "")
 }
 
 // Run, cmd tarafindan cagrilan ust seviye giristir.
@@ -322,16 +369,16 @@ func Show(p Params) error {
 	hInst, _, _ := procGetModuleHandle.Call(0)
 	className := utf16(gateClass)
 
-	title := fmt.Sprintf("%s kapıda durduruldu", p.AppName)
+	titleText := title(p.AppName)
 	hwnd, _, err := procCreateWindowEx.Call(
-		0, uintptr(unsafe.Pointer(className)), uintptr(unsafe.Pointer(utf16(title))),
+		0, uintptr(unsafe.Pointer(className)), uintptr(unsafe.Pointer(utf16(titleText))),
 		wsOverlappedWindow, cwUseDefault, cwUseDefault, 480, 270, 0, 0, hInst, 0,
 	)
 	if hwnd == 0 {
 		return fmt.Errorf("pencere oluşturulamadı: %w", err)
 	}
 
-	prompt := fmt.Sprintf("%s açılmadan önce MFA kodu gerekiyor.", p.AppName)
+	promptText := prompt(p.AppName)
 	who := AskLine(p.People)
 
 	font, _, _ := procGetStockObject.Call(defaultGUIFont)
@@ -347,7 +394,7 @@ func Show(p Params) error {
 		return r
 	}
 
-	newChild(static, prompt, ssLeft, 20, 20, 430, 22, 0)
+	newChild(static, promptText, ssLeft, 20, 20, 430, 22, 0)
 	newChild(static, who, ssLeft, 20, 46, 430, 22, 0)
 	hEdit = newChild(utf16("EDIT"), "", wsBorder|wsTabStop|esNumber|esCenter, 20, 86, 200, 30, 0)
 	newChild(utf16("BUTTON"), "Aç", wsTabStop|bsDefPushButton, 240, 86, 100, 30, idButton)

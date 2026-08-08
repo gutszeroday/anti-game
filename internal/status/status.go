@@ -29,11 +29,7 @@ func openedBy(cfg *config.Config, st *store.State) string {
 // taze olmasi gerektigidir. Izleyici her turda tazeliyor; uc tur pay
 // birakmak, tek bir yavas turun oyunu kapanmis gostermesini engeller.
 func freshWindow(cfg *config.Config) time.Duration {
-	d := 3 * time.Duration(cfg.PollMS) * time.Millisecond
-	if d < 15*time.Second {
-		d = 15 * time.Second
-	}
-	return d
+	return max(3*time.Duration(cfg.PollMS)*time.Millisecond, 15*time.Second)
 }
 
 // fmtDur, kalan sureyi kisa ve asagi yuvarlayarak yazar. Yukari

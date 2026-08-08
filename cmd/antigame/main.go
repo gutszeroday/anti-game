@@ -41,6 +41,7 @@ Kullanım:
   antigame setup              Kurulum sihirbazı (MFA eşleştirme)
   antigame watch              İzleyiciyi başlat (zamanlanmış görev çalıştırır)
   antigame gate --app <ad>    Kod giriş penceresi
+  antigame gate --manual      Oyun açmadan kod gir
   antigame list               Oyun listesini görüntüle / düzenle
   antigame people             Kapıyı açabilen kişileri yönet
   antigame report             Haftalık raporu tarayıcıda aç
@@ -75,6 +76,15 @@ func main() {
 	var err error
 	switch os.Args[1] {
 	case "gate":
+		if slices.Contains(os.Args[2:], "--manual") {
+			err = gate.RunManual(config.Dir())
+			// Oturum zaten aciksa yapacak bir sey yok: cagiran taraf
+			// kalan sureyi zaten soyluyor, ikinci bir uyari gereksiz.
+			if errors.Is(err, gate.ErrSessionOpen) {
+				err = nil
+			}
+			break
+		}
 		app := "Oyun"
 		if len(os.Args) >= 4 && os.Args[2] == "--app" {
 			app = os.Args[3]

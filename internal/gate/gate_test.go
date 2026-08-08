@@ -3,11 +3,15 @@
 package gate
 
 import (
+	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/guts/antigame/internal/auth"
 	"github.com/guts/antigame/internal/config"
+	"github.com/guts/antigame/internal/session"
+	"github.com/guts/antigame/internal/store"
 )
 
 func TestSingleInstanceBlocksSecondGate(t *testing.T) {
@@ -109,5 +113,35 @@ func TestAskLineDropsHintsWhenLineIsTooLong(t *testing.T) {
 		if !strings.Contains(got, name) {
 			t.Errorf("%s satirdan dustu: %q", name, got)
 		}
+	}
+}
+
+func TestRunManualRefusesWhenTheSessionIsOpen(t *testing.T) {
+	dir := t.TempDir()
+	if err := config.Save(dir, config.Default()); err != nil {
+		t.Fatal(err)
+	}
+	st := &store.State{}
+	session.Open(st, time.Now().UTC(), "")
+	if err := store.SaveState(dir, st); err != nil {
+		t.Fatal(err)
+	}
+	if err := RunManual(dir); !errors.Is(err, ErrSessionOpen) {
+		t.Errorf("acik oturumda RunManual = %v, istenen ErrSessionOpen", err)
+	}
+}
+
+func TestManualTextsDoNotNameAGame(t *testing.T) {
+	if got := title(""); !strings.Contains(got, "Kod") {
+		t.Errorf("manuel baslik yanlis: %q", got)
+	}
+	if got := prompt(""); strings.HasPrefix(got, " ") {
+		t.Errorf("bos oyun adi metinde bosluk birakiyor: %q", got)
+	}
+	if got := title("Valorant"); !strings.Contains(got, "Valorant") {
+		t.Errorf("oyun adli baslik yanlis: %q", got)
+	}
+	if got := prompt("Valorant"); !strings.Contains(got, "Valorant") {
+		t.Errorf("oyun adli ilk satir yanlis: %q", got)
 	}
 }
