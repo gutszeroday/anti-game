@@ -50,7 +50,7 @@ func TestOpenSessionShowsRemainingGrace(t *testing.T) {
 		t.Errorf("oturum acik oldugu soylenmedi:\n%s", s)
 	}
 	// 10 dakikalik odemesiz surenin 4'u gecti; 6 dakika kalmali.
-	if !strings.Contains(s, "6 dakika") {
+	if !strings.Contains(s, "6 dk") {
 		t.Errorf("kalan odemesiz sure yanlis:\n%s", s)
 	}
 }
@@ -86,7 +86,7 @@ func TestOldStateWithoutLastSeenShowsSaneRemaining(t *testing.T) {
 	if strings.Contains(s, "-") {
 		t.Errorf("kalan sure negatif cikti:\n%s", s)
 	}
-	if !strings.Contains(s, "6 dakika") {
+	if !strings.Contains(s, "6 dk") {
 		t.Errorf("kalan sure eski bicimli oturumda yanlis:\n%s", s)
 	}
 }
@@ -117,5 +117,97 @@ func TestStatusNamesWhoOpenedTheSession(t *testing.T) {
 	}
 	if !strings.Contains(got, "Baran açtı") {
 		t.Errorf("oturumu acan kisi yazilmadi:\n%s", got)
+	}
+}
+
+func briefFor(t *testing.T, mutate func(*store.State)) string {
+	t.Helper()
+	dir := t.TempDir()
+	cfg := config.Default()
+	cfg.GraceMinutes = 10
+	cfg.LauncherWindowMinutes = 10
+	if err := config.Save(dir, cfg); err != nil {
+		t.Fatal(err)
+	}
+	st, _ := store.LoadState(dir)
+	if mutate != nil {
+		mutate(st)
+	}
+	if err := store.SaveState(dir, st); err != nil {
+		t.Fatal(err)
+	}
+	s, err := Brief(dir, t0)
+	if err != nil {
+		t.Fatalf("Brief: %v", err)
+	}
+	return s
+}
+
+func TestBriefClosedSession(t *testing.T) {
+	if s := briefFor(t, nil); !strings.Contains(s, "kod gerekiyor") {
+		t.Errorf("kapali oturum icin kod istenmeli: %q", s)
+	}
+}
+
+func TestBriefWaitsForTheGameToStart(t *testing.T) {
+	// Kod 2 dakika once girildi, oyun hic acilmadi: 8 dakika kaldi.
+	s := briefFor(t, func(st *store.State) {
+		session.Open(st, t0.Add(-2*time.Minute), "")
+	})
+	if !strings.Contains(s, "Oyunu açmak için") || !strings.Contains(s, "8 dk") {
+		t.Errorf("oyun bekleniyor metni yanlis: %q", s)
+	}
+}
+
+func TestBriefSaysGameIsRunning(t *testing.T) {
+	// LastGameSeen taze: izleyici oyunu bu tur gordu.
+	s := briefFor(t, func(st *store.State) {
+		session.Open(st, t0.Add(-30*time.Minute), "")
+		st.Session.LastSeen = t0
+		st.Session.LastGameSeen = t0
+	})
+	if !strings.Contains(s, "Oyun açık") {
+		t.Errorf("oyun calisiyor metni yanlis: %q", s)
+	}
+}
+
+func TestBriefCountsDownAfterTheGameCloses(t *testing.T) {
+	// Oyun 4 dakika once son gorulmus: 6 dakika kaldi.
+	s := briefFor(t, func(st *store.State) {
+		session.Open(st, t0.Add(-30*time.Minute), "")
+		st.Session.LastSeen = t0.Add(-4 * time.Minute)
+		st.Session.LastGameSeen = t0.Add(-4 * time.Minute)
+	})
+	if !strings.Contains(s, "Tekrar kod istenene kadar") || !strings.Contains(s, "6 dk") {
+		t.Errorf("oyun kapandi metni yanlis: %q", s)
+	}
+}
+
+func TestBriefTreatsAStaleGameStampAsClosed(t *testing.T) {
+	// Tazelik penceresinin disinda kalan damga "oyun acik" sayilmamali.
+	cfg := config.Default()
+	st := &store.State{}
+	session.Open(st, t0.Add(-30*time.Minute), "")
+	st.Session.LastSeen = t0.Add(-time.Minute)
+	st.Session.LastGameSeen = t0.Add(-time.Minute)
+	if s := briefLine(cfg, st, t0); strings.Contains(s, "Oyun açık") {
+		t.Errorf("bayat damga oyunu acik gosterdi: %q", s)
+	}
+}
+
+func TestFmtDurShrinksTheUnitWithTheRemainder(t *testing.T) {
+	for _, c := range []struct {
+		d    time.Duration
+		want string
+	}{
+		{40 * time.Second, "40 sn"},
+		{2*time.Minute + 30*time.Second, "2 dk 30 sn"},
+		{6 * time.Minute, "6 dk"},
+		{11 * time.Minute, "11 dk"},
+		{-time.Minute, "0 sn"},
+	} {
+		if got := fmtDur(c.d); got != c.want {
+			t.Errorf("fmtDur(%v) = %q, istenen %q", c.d, got, c.want)
+		}
 	}
 }
