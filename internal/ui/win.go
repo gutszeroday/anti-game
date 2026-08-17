@@ -67,6 +67,28 @@ var (
 	procInitCommonControlsEx = comctl32.NewProc("InitCommonControlsEx")
 
 	procGetModuleHandle = kernel32.NewProc("GetModuleHandleW")
+
+	procCreateSolidBrush = gdi32.NewProc("CreateSolidBrush")
+	procDeleteObject     = gdi32.NewProc("DeleteObject")
+	procCreatePen        = gdi32.NewProc("CreatePen")
+	procSelectObject     = gdi32.NewProc("SelectObject")
+	procRectangle        = gdi32.NewProc("Rectangle")
+	procSetBkMode        = gdi32.NewProc("SetBkMode")
+	procSetTextColor     = gdi32.NewProc("SetTextColor")
+	procSetBkColor       = gdi32.NewProc("SetBkColor")
+	procGetStockObject   = gdi32.NewProc("GetStockObject")
+
+	procFillRect        = user32.NewProc("FillRect")
+	procDrawText        = user32.NewProc("DrawTextW")
+	procInvalidateRect  = user32.NewProc("InvalidateRect")
+	procTrackMouseEvent = user32.NewProc("TrackMouseEvent")
+	procGetWindowDC     = user32.NewProc("GetWindowDC")
+	procReleaseDC       = user32.NewProc("ReleaseDC")
+	procRedrawWindow    = user32.NewProc("RedrawWindow")
+
+	procSetWindowSubclass    = comctl32.NewProc("SetWindowSubclass")
+	procDefSubclassProc      = comctl32.NewProc("DefSubclassProc")
+	procRemoveWindowSubclass = comctl32.NewProc("RemoveWindowSubclass")
 )
 
 // Pencere ve kontrol stilleri.
@@ -87,6 +109,7 @@ const (
 	bsPushButton    = 0x00000000
 	bsDefPushButton = 0x00000001
 	bsAutoCheckBox  = 0x00000003
+	bsOwnerDraw     = 0x0000000B
 
 	esAutoHScroll = 0x00000080
 	esNumber      = 0x00002000
@@ -116,6 +139,22 @@ const (
 	wmTimer         = 0x0113
 	wmDpiChanged    = 0x02E0
 
+	wmDrawItem       = 0x002B
+	wmEraseBkgnd     = 0x0014
+	wmCtlColorStatic = 0x0138
+	wmCtlColorEdit   = 0x0133
+	wmMouseMove      = 0x0200
+	wmMouseLeave     = 0x02A3
+	wmLButtonDown    = 0x0201
+	wmLButtonUp      = 0x0202
+	wmSetFocus       = 0x0007
+	wmKillFocus      = 0x0008
+	wmNcPaint        = 0x0085
+	wmNcDestroy      = 0x0082
+	wmKeyDown        = 0x0100
+
+	vkReturn = 0x0D
+
 	bmGetCheck = 0x00F0
 	bmSetCheck = 0x00F1
 
@@ -123,6 +162,28 @@ const (
 
 	idOK     = 1
 	idCancel = 2
+)
+
+// Owner-draw ve GDI sabitleri.
+const (
+	odtButton   = 4
+	odsFocus    = 0x0010
+	odsDisabled = 0x0004
+
+	psSolid        = 0
+	stockNullBrush = 5
+
+	transparentBkMode = 1
+
+	dtCenter     = 0x0001
+	dtVcenter    = 0x0004
+	dtSingleLine = 0x0020
+
+	tmeLeave = 0x00000002
+
+	rdwInvalidate = 0x0001
+	rdwFrame      = 0x0400
+	rdwUpdateNow  = 0x0100
 )
 
 // Liste kontrolu mesajlari ve bayraklari.
@@ -276,6 +337,28 @@ type lvItem struct {
 	PuColumns  uintptr
 	PiColFmt   uintptr
 	IGroup     int32
+}
+
+// drawItemStruct, Win32'nin DRAWITEMSTRUCT'idir. Alan sirasi ve tipleri
+// birebir eslesiyor; Go derleyicisi C ile ayni hizalamayi uretiyor (bu
+// dosyadaki digenr Win32 struct'larla ayni desen, ornek: paintStruct).
+type drawItemStruct struct {
+	CtlType    uint32
+	CtlID      uint32
+	ItemID     uint32
+	ItemAction uint32
+	ItemState  uint32
+	HwndItem   uintptr
+	Hdc        uintptr
+	RcItem     winRect
+	ItemData   uintptr
+}
+
+type trackMouseEvent struct {
+	Size      uint32
+	Flags     uint32
+	HwndTrack uintptr
+	HoverTime uint32
 }
 
 func utf16(s string) *uint16 {

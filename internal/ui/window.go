@@ -132,15 +132,15 @@ func (w *mainWindow) build() {
 		wsExClientEdge, z, w.hwnd, 0, w.font)
 	lvSetColumns(w.games, gameColumnTitles, gameColumnWidths, w.dpi)
 
-	w.addBtn = create("BUTTON", "Ekle…", bsPushButton|wsTabStop, 0, z, w.hwnd, idAdd, w.font)
-	w.removeBtn = create("BUTTON", "Çıkar", bsPushButton|wsTabStop, 0, z, w.hwnd, idRemoveGame, w.font)
+	w.addBtn = createButton(w.hwnd, "Ekle…", z, idAdd, variantSecondary)
+	w.removeBtn = createButton(w.hwnd, "Çıkar", z, idRemoveGame, variantSecondary)
 	w.autoStart = create("BUTTON", "Windows açılışında başlat",
 		bsAutoCheckBox|wsTabStop|wsGroup, 0, z, w.hwnd, idAutoStart, w.font)
 	w.note = create("STATIC", "", ssLeft, 0, z, w.hwnd, 0, w.font)
 
-	w.watchBtn = create("BUTTON", "İzleyiciyi başlat", bsPushButton|wsTabStop, 0, z, w.hwnd, idWatch, w.font)
-	w.reportBtn = create("BUTTON", "Haftalık rapor", bsPushButton|wsTabStop, 0, z, w.hwnd, idReport, w.font)
-	w.codeBtn = create("BUTTON", "Kod gir…", bsPushButton|wsTabStop, 0, z, w.hwnd, idCode, w.font)
+	w.watchBtn = createButton(w.hwnd, "İzleyiciyi başlat", z, idWatch, variantPrimary)
+	w.reportBtn = createButton(w.hwnd, "Haftalık rapor", z, idReport, variantSecondary)
+	w.codeBtn = createButton(w.hwnd, "Kod gir…", z, idCode, variantSecondary)
 }
 
 func (w *mainWindow) relayout() {
@@ -434,6 +434,13 @@ func mainProc(hwnd, msg, wparam, lparam uintptr) uintptr {
 			// yapiyor; ardindan gelen WM_SIZE ile yerlesim yenileniyor.
 			// lparam'daki dikdortgeni elle uygulamak ayni isi tekrarlardi.
 			break
+		}
+
+	case wmDrawItem:
+		di := (*drawItemStruct)(osPointer(lparam))
+		if di.CtlType == odtButton {
+			drawButton(di)
+			return 1
 		}
 
 	case wmGetMinMaxInfo:
