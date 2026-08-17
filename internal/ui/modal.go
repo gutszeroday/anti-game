@@ -63,6 +63,15 @@ func modalProc(hwnd, msg, wparam, lparam uintptr) uintptr {
 			drawButton(di)
 			return 1
 		}
+	case wmEraseBkgnd:
+		paintBackground(wparam, hwnd)
+		return 1
+
+	case wmCtlColorStatic:
+		procSetBkMode.Call(wparam, transparentBkMode)
+		procSetTextColor.Call(wparam, uintptr(clrTextPrimary))
+		return ensureBackgroundBrush()
+
 	case wmPaint:
 		if m != nil && m.onPaint != nil {
 			var ps paintStruct

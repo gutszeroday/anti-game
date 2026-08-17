@@ -443,6 +443,15 @@ func mainProc(hwnd, msg, wparam, lparam uintptr) uintptr {
 			return 1
 		}
 
+	case wmEraseBkgnd:
+		paintBackground(wparam, hwnd)
+		return 1
+
+	case wmCtlColorStatic:
+		procSetBkMode.Call(wparam, transparentBkMode)
+		procSetTextColor.Call(wparam, uintptr(clrTextPrimary))
+		return ensureBackgroundBrush()
+
 	case wmGetMinMaxInfo:
 		if applyMinSize(lparam, dpiOf(hwnd)) {
 			return 0

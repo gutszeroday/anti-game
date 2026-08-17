@@ -243,3 +243,23 @@ func drawButton(dis *drawItemStruct) {
 		uintptr(unsafe.Pointer(&r)), dtCenter|dtVcenter|dtSingleLine)
 	procSelectObject.Call(hdc, oldFont)
 }
+
+// backgroundBrush, pencere/diyalog zeminidir (Gray 10). Process basina bir
+// kez olusturuluyor; WM_ERASEBKGND her tikte cagrilabilir, her seferinde
+// CreateSolidBrush kaynak sizdirirdi.
+var backgroundBrush uintptr
+
+func ensureBackgroundBrush() uintptr {
+	if backgroundBrush == 0 {
+		backgroundBrush, _, _ = procCreateSolidBrush.Call(uintptr(clrBackground))
+	}
+	return backgroundBrush
+}
+
+// paintBackground, WM_ERASEBKGND icin pencerenin istemci alanini Carbon
+// Gray 10 rengiyle doldurur.
+func paintBackground(hdc, hwnd uintptr) {
+	var r winRect
+	procGetClientRect.Call(hwnd, uintptr(unsafe.Pointer(&r)))
+	procFillRect.Call(hdc, uintptr(unsafe.Pointer(&r)), ensureBackgroundBrush())
+}
