@@ -683,10 +683,10 @@ func trim() {
 // kapanana kadar bloklar. Sahip pencere bu sirada devre disi: modal
 // olmasinin tek anlami bu.
 //
-// IsDialogMessage cagriliyor cunku Tab ile gezinme, Enter ile varsayilan
-// dugme ve Esc ile iptal bu cagriya bagli; kontroller kendi basina
-// klavye gezinmesi saglamiyor.
-func runModal(hwnd, parent uintptr) {
+// onEnter, Enter tusuna basildiginda cagrilir (varsayilan buton owner-draw
+// oldugu icin IsDialogMessage'in yerlesik "varsayilan butonu tetikle"
+// mekanizmasi calismiyor — bkz. Task 3 notu).
+func runModal(hwnd, parent uintptr, onEnter func()) {
 	if parent != 0 {
 		enable(parent, false)
 	}
@@ -697,6 +697,10 @@ func runModal(hwnd, parent uintptr) {
 		r, _, _ := procGetMessage.Call(uintptr(unsafe.Pointer(&msg)), 0, 0, 0)
 		if int32(r) <= 0 {
 			break
+		}
+		if msg.Message == wmKeyDown && msg.WParam == vkReturn && onEnter != nil {
+			onEnter()
+			continue
 		}
 		if d, _, _ := procIsDialogMessage.Call(hwnd, uintptr(unsafe.Pointer(&msg))); d != 0 {
 			continue

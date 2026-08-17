@@ -28,6 +28,9 @@ type modal struct {
 	onPaint func(hdc uintptr)
 
 	nextID int
+
+	// defaultID, Enter'da tetiklenecek butonun kimligidir (0 = yok).
+	defaultID int
 }
 
 // Etkin diyaloglar. WndProc bir C geri cagrimidir ve kapali degisken
@@ -53,6 +56,12 @@ func modalProc(hwnd, msg, wparam, lparam uintptr) uintptr {
 		if m != nil && m.onCmd != nil {
 			m.onCmd(int(uint16(wparam)))
 			return 0
+		}
+	case wmDrawItem:
+		di := (*drawItemStruct)(osPointer(lparam))
+		if di.CtlType == odtButton {
+			drawButton(di)
+			return 1
 		}
 	case wmPaint:
 		if m != nil && m.onPaint != nil {
@@ -126,12 +135,14 @@ func (m *modal) label(text string, r Rect) uintptr {
 	return h
 }
 
-func (m *modal) button(text string, r Rect, def bool) (uintptr, int) {
-	style := uint32(bsPushButton | wsTabStop)
+func (m *modal) button(text string, r Rect, variant buttonVariant, def bool) (uintptr, int) {
+	id := m.nextID
+	m.nextID++
+	h := createButton(m.hwnd, text, Rect{X: m.s(r.X), Y: m.s(r.Y), W: m.s(r.W), H: m.s(r.H)}, id, variant)
 	if def {
-		style = bsDefPushButton | wsTabStop
+		m.defaultID = id
 	}
-	return m.add("BUTTON", text, style, 0, r)
+	return h, id
 }
 
 func (m *modal) edit(text string, r Rect, extra uint32) uintptr {
@@ -153,7 +164,13 @@ func (m *modal) list(r Rect, titles []string, widths []int32) uintptr {
 }
 
 // run, diyalogu gosterir ve kapanana kadar bekler.
-func (m *modal) run(parent uintptr) { runModal(m.hwnd, parent) }
+func (m *modal) run(parent uintptr) {
+	runModal(m.hwnd, parent, func() {
+		if m.onCmd != nil && m.defaultID != 0 {
+			m.onCmd(m.defaultID)
+		}
+	})
+}
 
 // close, diyalogu kapatir.
 func (m *modal) close() { destroy(m.hwnd) }
