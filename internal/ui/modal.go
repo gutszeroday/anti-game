@@ -68,6 +68,13 @@ func modalProc(hwnd, msg, wparam, lparam uintptr) uintptr {
 		return 1
 
 	case wmCtlColorStatic:
+		// Salt-okunur (ES_READONLY) EDIT'ler icin Windows WM_CTLCOLOREDIT
+		// yerine bu mesaji gonderiyor (belgelenmis Win32 davranisi). lparam
+		// kontrolun HWND'si; editStates'te varsa bu aslinda bir EDIT'tir ve
+		// duz STATIC etiket yerine colorEdit'in verdigi beyaz zemini almali.
+		if _, ok := editStates[lparam]; ok {
+			return colorEdit(wparam)
+		}
 		procSetBkMode.Call(wparam, transparentBkMode)
 		procSetTextColor.Call(wparam, uintptr(clrTextPrimary))
 		return ensureBackgroundBrush()

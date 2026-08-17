@@ -106,10 +106,8 @@ const (
 
 	wsExClientEdge = 0x00000200
 
-	bsPushButton    = 0x00000000
-	bsDefPushButton = 0x00000001
-	bsAutoCheckBox  = 0x00000003
-	bsOwnerDraw     = 0x0000000B
+	bsAutoCheckBox = 0x00000003
+	bsOwnerDraw    = 0x0000000B
 
 	esAutoHScroll = 0x00000080
 	esNumber      = 0x00002000
@@ -210,7 +208,6 @@ const (
 	lvniSelected = 0x0002
 
 	lvsExFullRowSelect = 0x00000020
-	lvsExGridLines     = 0x00000001
 	lvsExDoubleBuffer  = 0x00010000
 
 	iccListViewClasses = 0x00000001

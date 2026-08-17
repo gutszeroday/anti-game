@@ -430,6 +430,9 @@ func mainProc(hwnd, msg, wparam, lparam uintptr) uintptr {
 				setFont(h, w.font)
 			}
 			lvSetColumnWidths(w.games, gameColumnWidths, w.dpi)
+			if hdr, _, _ := procSendMessage.Call(w.games, lvmGetHeader, 0, 0); hdr != 0 {
+				setFont(hdr, semiboldFont(w.dpi))
+			}
 			// Pencereyi yeni ekrana tasiyip olceklemeyi varsayilan isleyici
 			// yapiyor; ardindan gelen WM_SIZE ile yerlesim yenileniyor.
 			// lparam'daki dikdortgeni elle uygulamak ayni isi tekrarlardi.
