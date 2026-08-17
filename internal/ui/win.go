@@ -196,6 +196,10 @@ const (
 	lvmInsertColumn     = lvmFirst + 97
 	lvmSetExtendedStyle = lvmFirst + 54
 	lvmSetColumnWidth   = lvmFirst + 30
+	lvmSetBkColor       = lvmFirst + 1
+	lvmSetTextColor     = lvmFirst + 36
+	lvmSetTextBkColor   = lvmFirst + 38
+	lvmGetHeader        = lvmFirst + 31
 
 	lvcfWidth   = 0x0002
 	lvcfText    = 0x0004
@@ -567,10 +571,20 @@ func selectAll(hwnd uintptr) {
 	procSendMessage.Call(hwnd, emSetSel, 0, ^uintptr(0))
 }
 
-// lvSetColumns, liste kontrolunun sutunlarini kurar.
+// lvSetColumns, liste kontrolunun sutunlarini kurar ve Carbon renklerini
+// uygular: beyaz zemin, izgarasiz (yalnizca Carbon'un varsayilan satir
+// ayiricisiyla), semibold header.
 func lvSetColumns(hwnd uintptr, titles []string, widths []int32, dpi uint32) {
 	procSendMessage.Call(hwnd, lvmSetExtendedStyle, 0,
-		lvsExFullRowSelect|lvsExGridLines|lvsExDoubleBuffer)
+		lvsExFullRowSelect|lvsExDoubleBuffer)
+	procSendMessage.Call(hwnd, lvmSetBkColor, 0, uintptr(clrLayer01))
+	procSendMessage.Call(hwnd, lvmSetTextColor, 0, uintptr(clrTextPrimary))
+	procSendMessage.Call(hwnd, lvmSetTextBkColor, 0, uintptr(clrLayer01))
+
+	if hdr, _, _ := procSendMessage.Call(hwnd, lvmGetHeader, 0, 0); hdr != 0 {
+		setFont(hdr, semiboldFont(dpi))
+	}
+
 	for i, t := range titles {
 		c := lvColumn{
 			Mask:     lvcfText | lvcfWidth | lvcfSubItem,
