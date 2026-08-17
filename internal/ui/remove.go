@@ -35,8 +35,8 @@ func showRemove(parent uintptr, dir string) bool {
 
 	status := m.label("", Rect{12, 172, 436, 70})
 
-	_, okID := m.button("Kaldır", Rect{252, 254, 90, 28}, false)
-	_, cancelID := m.button("Vazgeç", Rect{354, 254, 90, 28}, true)
+	_, okID := m.button("Kaldır", Rect{252, 254, 90, 28}, variantDanger, false)
+	_, cancelID := m.button("Vazgeç", Rect{354, 254, 90, 28}, variantSecondary, true)
 
 	done := false
 	m.onCmd = func(id int) {

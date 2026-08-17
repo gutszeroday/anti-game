@@ -35,8 +35,8 @@ func showAddGame(parent uintptr, dir string) bool {
 
 	status := m.label("", Rect{12, 296, 406, 34})
 
-	addBtn, addID := m.button("Ekle", Rect{224, 334, 90, 28}, true)
-	_, cancelID := m.button("Vazgeç", Rect{326, 334, 90, 28}, false)
+	addBtn, addID := m.button("Ekle", Rect{224, 334, 90, 28}, variantPrimary, true)
+	_, cancelID := m.button("Vazgeç", Rect{326, 334, 90, 28}, variantSecondary, false)
 	_ = addBtn
 
 	added := false

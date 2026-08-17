@@ -22,11 +22,11 @@ func showPeople(parent uintptr, dir string) {
 
 	status := m.label("", Rect{12, 266, 516, 52})
 
-	_, addID := m.button("Ekle", Rect{12, 330, 96, 28}, false)
-	_, editID := m.button("Düzenle", Rect{114, 330, 96, 28}, false)
-	_, rotateID := m.button("Anahtar yenile", Rect{216, 330, 118, 28}, false)
-	_, removeID := m.button("Sil", Rect{340, 330, 80, 28}, false)
-	_, closeID := m.button("Kapat", Rect{432, 330, 96, 28}, true)
+	_, addID := m.button("Ekle", Rect{12, 330, 96, 28}, variantSecondary, false)
+	_, editID := m.button("Düzenle", Rect{114, 330, 96, 28}, variantSecondary, false)
+	_, rotateID := m.button("Anahtar yenile", Rect{216, 330, 118, 28}, variantSecondary, false)
+	_, removeID := m.button("Sil", Rect{340, 330, 80, 28}, variantDanger, false)
+	_, closeID := m.button("Kapat", Rect{432, 330, 96, 28}, variantSecondary, true)
 
 	var entries []people.Entry
 
@@ -158,8 +158,8 @@ func askPerson(parent uintptr, title, name, hint string) (string, string, bool) 
 
 	status := m.label("", Rect{12, 116, 352, 18})
 
-	_, okID := m.button("Tamam", Rect{170, 148, 90, 28}, true)
-	_, cancelID := m.button("Vazgeç", Rect{272, 148, 90, 28}, false)
+	_, okID := m.button("Tamam", Rect{170, 148, 90, 28}, variantPrimary, true)
+	_, cancelID := m.button("Vazgeç", Rect{272, 148, 90, 28}, variantSecondary, false)
 
 	var outName, outHint string
 	ok := false

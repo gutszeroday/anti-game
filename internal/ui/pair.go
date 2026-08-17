@@ -45,16 +45,16 @@ func showPair(parent uintptr, account string) (secret []byte, counter uint64, ok
 	m.label("Kod:", Rect{12, 306, 34, 20})
 	code := m.edit("", Rect{50, 302, 90, 26}, esNumber|esCenter)
 
-	_, revealID := m.button("Anahtarı göster", Rect{152, 302, 130, 26}, false)
-	copyBtn, copyID := m.button("Kopyala", Rect{292, 302, 90, 26}, false)
+	_, revealID := m.button("Anahtarı göster", Rect{152, 302, 130, 26}, variantSecondary, false)
+	copyBtn, copyID := m.button("Kopyala", Rect{292, 302, 90, 26}, variantSecondary, false)
 	// Anahtar gosterilmeden kopyalanacak bir sey yok; dugmenin
 	// tiklanabilir durmasi yaniltici olurdu.
 	enable(copyBtn, false)
 
 	status := m.label("", Rect{12, 338, 476, 70})
 
-	_, okID := m.button("Onayla", Rect{292, 424, 90, 28}, true)
-	_, cancelID := m.button("Vazgeç", Rect{394, 424, 90, 28}, false)
+	_, okID := m.button("Onayla", Rect{292, 424, 90, 28}, variantPrimary, true)
+	_, cancelID := m.button("Vazgeç", Rect{394, 424, 90, 28}, variantSecondary, false)
 
 	m.onCmd = func(id int) {
 		switch id {

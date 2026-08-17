@@ -38,9 +38,9 @@ func showData(parent uintptr, dir string) {
 
 	status := m.label("", Rect{12, 366, 250, 34})
 
-	_, moveID := m.button("Taşı…", Rect{262, 390, 90, 28}, false)
-	_, openID := m.button("Klasörü aç", Rect{366, 390, 100, 28}, false)
-	_, closeID := m.button("Kapat", Rect{478, 390, 90, 28}, true)
+	_, moveID := m.button("Taşı…", Rect{262, 390, 90, 28}, variantSecondary, false)
+	_, openID := m.button("Klasörü aç", Rect{366, 390, 100, 28}, variantSecondary, false)
+	_, closeID := m.button("Kapat", Rect{478, 390, 90, 28}, variantSecondary, true)
 
 	// cur, diyalogun gosterdigi klasordur. Tasima sonrasi degisiyor.
 	cur := dir
