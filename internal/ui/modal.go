@@ -72,6 +72,9 @@ func modalProc(hwnd, msg, wparam, lparam uintptr) uintptr {
 		procSetTextColor.Call(wparam, uintptr(clrTextPrimary))
 		return ensureBackgroundBrush()
 
+	case wmCtlColorEdit:
+		return colorEdit(wparam)
+
 	case wmPaint:
 		if m != nil && m.onPaint != nil {
 			var ps paintStruct
@@ -155,8 +158,9 @@ func (m *modal) button(text string, r Rect, variant buttonVariant, def bool) (ui
 }
 
 func (m *modal) edit(text string, r Rect, extra uint32) uintptr {
-	h, _ := m.add("EDIT", text, esAutoHScroll|wsTabStop|wsBorder|extra, wsExClientEdge, r)
-	return h
+	id := m.nextID
+	m.nextID++
+	return createEdit(m.hwnd, text, Rect{X: m.s(r.X), Y: m.s(r.Y), W: m.s(r.W), H: m.s(r.H)}, extra, id, m.font)
 }
 
 func (m *modal) checkbox(text string, r Rect) uintptr {

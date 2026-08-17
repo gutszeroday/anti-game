@@ -263,3 +263,113 @@ func paintBackground(hdc, hwnd uintptr) {
 	procGetClientRect.Call(hwnd, uintptr(unsafe.Pointer(&r)))
 	procFillRect.Call(hdc, uintptr(unsafe.Pointer(&r)), ensureBackgroundBrush())
 }
+
+// editState, tek bir EDIT kontrolunun odak durumudur — kenar rengi buna
+// gore degisiyor (odaksiz: borderStrong, odakli: interactive, 2px).
+type editState struct{ focused bool }
+
+var editStates = map[uintptr]*editState{}
+
+const editSubclassID = 1
+
+// editSubclassCB, buttonSubclassCB (yukarida) ile ayni nedenle sync.Once
+// arkasinda gec baslatiliyor: editSubclassProc govdesi editSubclassCB'yi
+// okuyor (RemoveWindowSubclass cagrisinda), bu da dogrudan bir var
+// initializer olarak yazilirsa Go'da "initialization cycle" hatasi verir.
+var (
+	editSubclassOnce sync.Once
+	editSubclassCB   uintptr
+)
+
+func editSubclassCallback() uintptr {
+	editSubclassOnce.Do(func() {
+		editSubclassCB = windows.NewCallback(editSubclassProc)
+	})
+	return editSubclassCB
+}
+
+// createEdit, gomuk 3D kenar yerine duz, Carbon renkli kenarli bir EDIT
+// kontrolu olusturur. Kenar WM_NCPAINT'te elle ciziliyor (EDIT sinifinin
+// kendi kenar cizimi WS_EX_CLIENTEDGE'e bagli; o kaldirildigi icin
+// kenarsiz kalirdi).
+func createEdit(parent uintptr, text string, r Rect, extra uint32, id int, font uintptr) uintptr {
+	h := create("EDIT", text, esAutoHScroll|wsTabStop|wsBorder|extra, 0, r, parent, id, font)
+	editStates[h] = &editState{}
+	procSetWindowSubclass.Call(h, editSubclassCallback(), editSubclassID, 0)
+	return h
+}
+
+func editSubclassProc(hwnd, msg, wparam, lparam, idSubclass, refData uintptr) uintptr {
+	switch msg {
+	case wmSetFocus:
+		if st := editStates[hwnd]; st != nil {
+			st.focused = true
+		}
+		r, _, _ := procDefSubclassProc.Call(hwnd, msg, wparam, lparam)
+		procRedrawWindow.Call(hwnd, 0, 0, rdwInvalidate|rdwFrame|rdwUpdateNow)
+		return r
+	case wmKillFocus:
+		if st := editStates[hwnd]; st != nil {
+			st.focused = false
+		}
+		r, _, _ := procDefSubclassProc.Call(hwnd, msg, wparam, lparam)
+		procRedrawWindow.Call(hwnd, 0, 0, rdwInvalidate|rdwFrame|rdwUpdateNow)
+		return r
+	case wmNcPaint:
+		r, _, _ := procDefSubclassProc.Call(hwnd, msg, wparam, lparam)
+		paintEditBorder(hwnd)
+		return r
+	case wmNcDestroy:
+		delete(editStates, hwnd)
+		procRemoveWindowSubclass.Call(hwnd, editSubclassCallback(), editSubclassID)
+	}
+	r, _, _ := procDefSubclassProc.Call(hwnd, msg, wparam, lparam)
+	return r
+}
+
+// paintEditBorder, EDIT kontrolunun kenarligini WM_NCPAINT sirasinda elle
+// cizer. GetWindowDC pencere disinin tamamini (istemci + kenarlik) kapsayan
+// bir DC verir, koordinatlar pencerenin sol-ustune gore — WM_NCPAINT'in
+// bekledigi koordinat sistemi budur.
+func paintEditBorder(hwnd uintptr) {
+	hdc, _, _ := procGetWindowDC.Call(hwnd)
+	if hdc == 0 {
+		return
+	}
+	defer procReleaseDC.Call(hwnd, hdc)
+
+	var wr winRect
+	procGetWindowRect.Call(hwnd, uintptr(unsafe.Pointer(&wr)))
+	w, h := wr.Right-wr.Left, wr.Bottom-wr.Top
+
+	color, width := clrBorderStrong, int32(1)
+	if st := editStates[hwnd]; st != nil && st.focused {
+		color, width = clrInteractive, 2
+	}
+
+	pen, _, _ := procCreatePen.Call(psSolid, uintptr(width), uintptr(color))
+	oldPen, _, _ := procSelectObject.Call(hdc, pen)
+	nullBrush, _, _ := procGetStockObject.Call(stockNullBrush)
+	oldBrush, _, _ := procSelectObject.Call(hdc, nullBrush)
+	procRectangle.Call(hdc, 0, 0, uintptr(w), uintptr(h))
+	procSelectObject.Call(hdc, oldPen)
+	procSelectObject.Call(hdc, oldBrush)
+	procDeleteObject.Call(pen)
+}
+
+var layerBrush uintptr
+
+func ensureLayerBrush() uintptr {
+	if layerBrush == 0 {
+		layerBrush, _, _ = procCreateSolidBrush.Call(uintptr(clrLayer01))
+	}
+	return layerBrush
+}
+
+// colorEdit, WM_CTLCOLOREDIT icin ortak isleyicidir: beyaz zemin, koyu
+// metin. modalProc bunu dogrudan cagiriyor.
+func colorEdit(hdc uintptr) uintptr {
+	procSetTextColor.Call(hdc, uintptr(clrTextPrimary))
+	procSetBkColor.Call(hdc, uintptr(clrLayer01))
+	return ensureLayerBrush()
+}
