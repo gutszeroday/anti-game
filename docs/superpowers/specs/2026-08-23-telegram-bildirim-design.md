@@ -214,8 +214,11 @@ Token girilince bildirimler otomatik açılır. Sonra "Sohbet ekle" ile
 kendi sohbetinizi eşleştirebilirsiniz.
 ```
 
-Token doluyken bu metin gizlenir, yerine sohbet listesi ve "Sohbet ekle"
-akışı gösterilir. Ayrı bir aç/kapa anahtarı yok: token'ın varlığı
+Token doluyken aynı etiketin metni kısa bir onaya döner ("Bot bağlandı.").
+Görünürlük değil metin değişir — pencerede ayrı bir gizle/göster mekanizması
+yok, mevcut `setText` yeterli. Sohbet listesi ve "Sohbet ekle" her zaman
+görünür; token boşken "Sohbet ekle"ye basılırsa "Önce bot token girip
+kaydedin." uyarısı çıkar. Ayrı bir aç/kapa anahtarı yok: token'ın varlığı
 özelliğin açık olduğu anlamına gelir (bkz. Kararlar) — token'ı silip
 Kaydet'e basmak özelliği kapatır (watcher goroutine'leri bir sonraki
 yeniden başlatmada durur).
