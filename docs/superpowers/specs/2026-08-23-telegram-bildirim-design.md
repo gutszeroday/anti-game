@@ -181,9 +181,20 @@ tick:
 Onaysız sohbetlerden gelen komutlara (eşleştirme kodu dışında) yanıt
 verilmez — botun varlığını ve komut setini yabancılara sızdırmamak için.
 
-`/durum` yanıtı `report.Aggregate` kullanır, ama haftalık değil günlük
-pencere: `now.Truncate(gün başı)` ile `now` arası, düz metin formatında
-(HTML render kullanılmaz).
+`/durum` yanıtı `report.Aggregate`'i kullanmaz — o işlev haftalık pencereye
+(`weekStart(now)`) sabit, günlük bir aralık kabul etmiyor. Bunun yerine
+`telegramwatch` kendi küçük özetleyicisini yazar: `store.Read(dir,
+günBaşı, now)` ile bugünün olaylarını okur, `game_end` olaylarının
+`DurS`'ini `Who`'ya göre toplar (başlatıcılar `cfg.Match(e.Exe,
+"").Launcher` ile elenir — `report/aggregate.go`'daki aynı kural), `unlock`
+olaylarını (`method != "recovery"`) `Who`'ya göre sayar. İsimler
+`cfg.FindPerson` ile çözülür. Düz metin olarak yollanır, ör.:
+
+```
+Bugün:
+  Baran — 2s 14dk, kapı 1 kez açıldı
+  Ali — 41dk, kapı 1 kez açıldı
+```
 
 ## UI — yeni "Bildirimler" ekranı (internal/ui/telegram.go)
 
