@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // Game, kapida durdurulacak tek bir oyunu tanimlar.
@@ -28,6 +29,17 @@ type Person struct {
 	ID   string `json:"id"`
 	Name string `json:"name"`
 	Hint string `json:"hint,omitempty"`
+}
+
+// TelegramChat, kapı bildirimlerini almaya onaylanmış bir Telegram
+// sohbetidir. Onay, UI'da üretilen tek kullanımlık eşleştirme koduyla
+// gerçekleşir (bkz. internal/telegramwatch).
+type TelegramChat struct {
+	ID    int64  `json:"id"`
+	Label string `json:"label,omitempty"`
+	// AddedAt, sohbetin ne zaman onaylandığıdır; yalnızca bilgi
+	// amaçlıdır, davranışı etkilemez.
+	AddedAt time.Time `json:"added_at"`
 }
 
 type Config struct {
@@ -53,6 +65,11 @@ type Config struct {
 	// numara geri doner ve silinen kisinin gecmis suresi yeni kisiye
 	// yazilirdi.
 	NextPersonSeq int `json:"next_person_seq,omitempty"`
+	// TelegramToken bosken bildirim ozelligi tamamen kapalidir: hicbir
+	// goroutine aga cikmaz. Duz metin: kullanici bilerek secti (bkz.
+	// spec).
+	TelegramToken string         `json:"telegram_token,omitempty"`
+	TelegramChats []TelegramChat `json:"telegram_chats,omitempty"`
 }
 
 // ValidPersonID, kisi ID'sinin dosya adinda kullanilmaya uygun olup

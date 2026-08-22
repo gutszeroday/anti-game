@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestDefaultContainsRiotGames(t *testing.T) {
@@ -303,5 +304,42 @@ func TestValidPersonIDRejectsPathCharacters(t *testing.T) {
 	}
 	if !ValidPersonID("p12") {
 		t.Error("gecerli kimlik reddedildi")
+	}
+}
+
+func TestTelegramChatsRoundTrip(t *testing.T) {
+	dir := t.TempDir()
+	added := time.Date(2026, 8, 23, 10, 0, 0, 0, time.UTC)
+	c := Default()
+	c.TelegramToken = "123:abc"
+	c.TelegramChats = []TelegramChat{{ID: 42, Label: "Ebeveyn", AddedAt: added}}
+
+	if err := Save(dir, c); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+	got, err := Load(dir)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if got.TelegramToken != "123:abc" {
+		t.Errorf("token korunmadi: %q", got.TelegramToken)
+	}
+	if len(got.TelegramChats) != 1 || got.TelegramChats[0].ID != 42 ||
+		got.TelegramChats[0].Label != "Ebeveyn" || !got.TelegramChats[0].AddedAt.Equal(added) {
+		t.Errorf("sohbet listesi korunmadi: %+v", got.TelegramChats)
+	}
+}
+
+func TestTelegramFieldsDefaultEmpty(t *testing.T) {
+	dir := t.TempDir()
+	if err := Save(dir, Default()); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+	got, err := Load(dir)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if got.TelegramToken != "" || len(got.TelegramChats) != 0 {
+		t.Errorf("varsayilan config'te telegram alanlari bos olmali: %+v", got)
 	}
 }
