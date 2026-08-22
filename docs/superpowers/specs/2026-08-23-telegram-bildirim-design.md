@@ -59,8 +59,12 @@ listede `Sohbet <ID>` gösterilir.
 
 ```go
 // State'e eklenir:
-TelegramOffset       int64      `json:"telegram_offset,omitempty"`        // getUpdates dedup
-TelegramLastUnlockTS *time.Time `json:"telegram_last_unlock_ts,omitempty"` // tarama işareti
+TelegramOffset         int64      `json:"telegram_offset,omitempty"`          // getUpdates dedup
+TelegramLastUnlockTS   *time.Time `json:"telegram_last_unlock_ts,omitempty"`  // tarama işareti
+// TelegramPendingCode, UI'da "Sohbet ekle" ile üretilen tek kullanımlık
+// eşleştirme kodudur. telegramwatch bunu okuyup eşleşen mesajı onaylar.
+TelegramPendingCode   string     `json:"telegram_pending_code,omitempty"`
+TelegramPendingExpiry *time.Time `json:"telegram_pending_expiry,omitempty"`
 ```
 
 Bu alanlar çalışma zamanı durumudur (Counter, LockUntil gibi), kullanıcı
@@ -71,8 +75,8 @@ başlar: geçmiş `unlock` olayları için geriye dönük bildirim atılmaz.
 
 ## Yeni paket: internal/telegram
 
-`gate` gibi kritik yollardan izole, yalnızca `watch` tarafından import
-edilir.
+`gate` gibi kritik yollardan izole, yalnızca `internal/telegramwatch`
+tarafından import edilir.
 
 ```go
 type Client struct {
@@ -96,10 +100,44 @@ kendi long-poll parametresi (`timeout=25`); istemci tarafında ek bir
 `http.Client.Timeout` bundan büyük tutulur (ör. 30s) yoksa istek erken
 kesilir.
 
-## Watcher entegrasyonu (internal/watch)
+## Watcher entegrasyonu: yeni paket internal/telegramwatch
 
-Mevcut 250ms process-tarama ticker'ından bağımsız, iki goroutine — yalnızca
-`cfg.TelegramToken != ""` ise başlar:
+`internal/watch`'un `Step(now)` döngüsü 250ms'de bir çalışıyor ve
+senkron: `Run` içinde `Step` doğrudan çağrılıyor, ağ çağrısı için ayrılmış
+bir goroutine yok (bkz. `watch.go` — "Dongu Step olarak disari aciliyor,
+testler zamani elle surebiliyor"). Telegram çağrıları (özellikle
+`GetUpdates`'in 25 saniyelik long-poll'u) bu döngünün içine konursa oyun
+tarama/durdurma turu 25 saniyeye kadar donar — anti-cheat'in temel
+işlevini bozar. Bu yüzden Telegram mantığı **`watch` paketine hiç
+dokunmaz**; ayrı bir paket ve ayrı goroutine'ler olarak yaşar.
+
+Yeni paket **`internal/telegramwatch`**, tek giriş noktası:
+
+```go
+func Run(ctx context.Context, dirFunc func() string) error
+```
+
+`cmd/antigame/main.go`'daki `runWatch`'a, mevcut `w.Run(ctx)` çağrısının
+yanına üçüncü bir goroutine olarak eklenir:
+
+```go
+watcher := make(chan error, 1)
+go func() { watcher <- w.Run(ctx) }()
+
+telegram := make(chan error, 1)
+go func() { telegram <- telegramwatch.Run(ctx, config.Dir) }()
+```
+
+`telegramwatch.Run`, `Watcher` ile hiçbir bellek içi durum paylaşmaz;
+kendi döngüsünde `config.Load`/`store.LoadState` ile okur,
+`config.Save`/`store.SaveState` ile yazar — tıpkı `gate` ve `watch`
+süreçlerinin bugün de aynı `state.json`/`config.json` üzerinden, kilitsiz,
+"son yazan kazanır" tutarlılığıyla haberleştiği gibi (bkz. `state.go`,
+atomik `.tmp`+rename yazım). Bu, yeni bir eşzamanlılık riski değil,
+mevcut dosya tabanlı koordinasyon modelinin süreç içi bir uzantısıdır.
+
+`telegramwatch.Run` içinde, `ctx` iptal olana kadar süren iki bağımsız
+goroutine — yalnızca `cfg.TelegramToken != ""` ise başlar:
 
 **1. Unlock tarayıcı** (~10sn ticker)
 
@@ -208,8 +246,9 @@ yanına "Bildirimler" düğmesi.
 | Paket | Test |
 |---|---|
 | telegram | `SendMessage`/`GetUpdates` istek biçimi ve yanıt ayrıştırma, `httptest.Server` ile; hata durumunda anlamlı `error` |
-| watch (unlock tarayıcı) | sahte event log'dan yalnızca yeni `unlock` olaylarının seçilmesi; `lastTS` ilerlemesi; bir chat'in hatası diğerini engellemiyor; token boşken goroutine hiç ağ çağrısı yapmıyor |
-| watch (komut dinleyici) | onaylı chat'ten `/durum` doğru özeti döndürüyor; onaysız chat'ten komut yanıtsız kalıyor; doğru eşleştirme kodu chat'i onaylıyor; yanlış/süresi dolmuş kod onaylamıyor; offset tekrar işlemi önlüyor |
+| telegramwatch (unlock tarayıcı) | sahte event log'dan yalnızca yeni `unlock` olaylarının seçilmesi; `lastTS` ilerlemesi; bir chat'in hatası diğerini engellemiyor; token boşken goroutine hiç ağ çağrısı yapmıyor |
+| telegramwatch (komut dinleyici) | onaylı chat'ten `/durum` doğru özeti döndürüyor; onaysız chat'ten komut yanıtsız kalıyor; doğru eşleştirme kodu chat'i onaylıyor; yanlış/süresi dolmuş kod onaylamıyor; offset tekrar işlemi önlüyor |
+| watch | değişmiyor — Telegram entegrasyonu bu pakete hiç dokunmadığının regresyon kanıtı olarak mevcut testler aynen geçmeye devam eder |
 | config | `TelegramChats` serileştirme/yükleme; eski config'lerde alan yoksa boş liste |
 | ui | eşleştirme kodu üretimi ve state'e yazımı; kaldırmanın anında etkili olması |
 
