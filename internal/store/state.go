@@ -39,6 +39,16 @@ type State struct {
 	RecoveryHash string            `json:"recovery_hash"`
 	RecoverySalt string            `json:"recovery_salt"`
 	RecoveryUsed bool              `json:"recovery_used"`
+	// TelegramOffset, getUpdates'te son islenen guncellemenin bir
+	// fazlasidir; ayni mesaji tekrar islememek icin.
+	TelegramOffset int64 `json:"telegram_offset,omitempty"`
+	// TelegramLastUnlockTS, event log taramasinin nereye kadar geldigini
+	// isaretler. Bos ise (ilk calisma) gecmis taranmaz.
+	TelegramLastUnlockTS *time.Time `json:"telegram_last_unlock_ts,omitempty"`
+	// TelegramPendingCode, "Sohbet ekle" ile uretilen tek kullanimlik
+	// eslestirme kodudur; suresi TelegramPendingExpiry'de.
+	TelegramPendingCode   string     `json:"telegram_pending_code,omitempty"`
+	TelegramPendingExpiry *time.Time `json:"telegram_pending_expiry,omitempty"`
 }
 
 const stateFile = "state.json"
