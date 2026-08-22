@@ -149,7 +149,27 @@ pencere: `now.Truncate(gün başı)` ile `now` arası, düz metin formatında
 
 ## UI — yeni "Bildirimler" ekranı (internal/ui/telegram.go)
 
-`internal/ui/people.go` ile aynı desende, `showPeople` yanına eklenir:
+`internal/ui/people.go` ile aynı desende, `showPeople` yanına eklenir.
+
+Token alanı boşken, ekranın üstünde sabit bir açıklama metni gösterilir —
+token nereden alınır, kullanıcı bunu bilmeden ekranı açamaz:
+
+```
+Telegram'dan bildirim almak için önce kendi botunuzu oluşturun:
+
+  1. Telegram'da @BotFather'ı açın.
+  2. /newbot yazın, botunuza bir isim verin.
+  3. BotFather'ın verdiği token'ı aşağıya yapıştırıp Kaydet'e basın.
+
+Token girilince bildirimler otomatik açılır. Sonra "Sohbet ekle" ile
+kendi sohbetinizi eşleştirebilirsiniz.
+```
+
+Token doluyken bu metin gizlenir, yerine sohbet listesi ve "Sohbet ekle"
+akışı gösterilir. Ayrı bir aç/kapa anahtarı yok: token'ın varlığı
+özelliğin açık olduğu anlamına gelir (bkz. Kararlar) — token'ı silip
+Kaydet'e basmak özelliği kapatır (watcher goroutine'leri bir sonraki
+yeniden başlatmada durur).
 
 - Bot token alanı: göster/düzenle/kaydet
 - Onaylı sohbet listesi: etiket, eklenme tarihi
