@@ -3,6 +3,8 @@
 package ui
 
 import (
+	"fmt"
+
 	"github.com/guts/antigame/internal/config"
 	"github.com/guts/antigame/internal/people"
 )
@@ -51,6 +53,20 @@ func PeopleRows(es []people.Entry) []Row {
 			key = "yok"
 		}
 		rows = append(rows, Row{Cells: []string{e.Name, hint, key}})
+	}
+	return rows
+}
+
+// ChatRows, onayli Telegram sohbetlerini goruntulenecek satirlara
+// cevirir. Sutunlar: Sohbet, Eklenme.
+func ChatRows(chats []config.TelegramChat) []Row {
+	rows := make([]Row, 0, len(chats))
+	for _, c := range chats {
+		label := c.Label
+		if label == "" {
+			label = fmt.Sprintf("Sohbet %d", c.ID)
+		}
+		rows = append(rows, Row{Cells: []string{label, c.AddedAt.Local().Format("2006-01-02 15:04")}})
 	}
 	return rows
 }

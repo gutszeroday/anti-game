@@ -5,6 +5,7 @@ package ui
 import (
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/guts/antigame/internal/config"
 	"github.com/guts/antigame/internal/people"
@@ -76,6 +77,27 @@ func TestPeopleRowsShowsDashForEmptyHint(t *testing.T) {
 
 func TestPeopleRowsEmptyListIsEmptyNotNil(t *testing.T) {
 	if rows := PeopleRows(nil); rows == nil {
+		t.Error("bos liste nil degil bos dilim olmali")
+	}
+}
+
+func TestChatRowsUsesLabelWhenSet(t *testing.T) {
+	added := time.Date(2026, 8, 23, 10, 0, 0, 0, time.UTC)
+	rows := ChatRows([]config.TelegramChat{{ID: 1, Label: "Ebeveyn", AddedAt: added}})
+	if rows[0].Cells[0] != "Ebeveyn" {
+		t.Errorf("etiket kullanilmadi: %q", rows[0].Cells[0])
+	}
+}
+
+func TestChatRowsFallsBackToChatID(t *testing.T) {
+	rows := ChatRows([]config.TelegramChat{{ID: 42}})
+	if rows[0].Cells[0] != "Sohbet 42" {
+		t.Errorf("beklenen varsayilan etiket degil: %q", rows[0].Cells[0])
+	}
+}
+
+func TestChatRowsEmptyListIsEmptyNotNil(t *testing.T) {
+	if rows := ChatRows(nil); rows == nil {
 		t.Error("bos liste nil degil bos dilim olmali")
 	}
 }
