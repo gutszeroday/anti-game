@@ -27,6 +27,7 @@ import (
 	"github.com/guts/antigame/internal/single"
 	"github.com/guts/antigame/internal/status"
 	"github.com/guts/antigame/internal/task"
+	"github.com/guts/antigame/internal/telegramwatch"
 	"github.com/guts/antigame/internal/tray"
 	"github.com/guts/antigame/internal/ui"
 	"github.com/guts/antigame/internal/uninstall"
@@ -362,6 +363,11 @@ func runWatch(background bool) error {
 	// pencere mesajlari yalnizca pencereyi olusturan thread'e teslim edilir.
 	watcher := make(chan error, 1)
 	go func() { watcher <- w.Run(ctx) }()
+
+	// Telegram bildirimi izleyiciden tamamen bagimsiz calisir: ag
+	// cagrisi anti-cheat'in kritik dongusunu hicbir zaman bloklamamali
+	// (bkz. internal/telegramwatch paket belgesi).
+	go func() { _ = telegramwatch.Run(ctx, config.Dir) }()
 
 	if err := tray.Run(ctx, tray.Options{
 		Tip: "antigame — izleyici çalışıyor",
