@@ -29,6 +29,7 @@ const (
 	idReport
 	idCode
 	idPeople
+	idNotifications
 	idUninstall
 	idDataInfo
 	idOpenFolder
@@ -305,6 +306,10 @@ func (w *mainWindow) onCommand(id int) {
 
 	case idPeople:
 		showPeople(w.hwnd, w.dir)
+		w.refresh()
+
+	case idNotifications:
+		showNotifications(w.hwnd, w.dir)
 		w.refresh()
 
 	case idUninstall:

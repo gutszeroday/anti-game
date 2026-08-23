@@ -46,6 +46,7 @@ var menuBar = []struct {
 		{"Oyun &çıkar", idRemoveGame},
 		separator,
 		{"&Kişiler…", idPeople},
+		{"&Bildirimler…", idNotifications},
 		separator,
 		{"Kal&dır…", idUninstall},
 	}},
