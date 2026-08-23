@@ -64,6 +64,37 @@ func TestDailySummaryExcludesLauncherDuration(t *testing.T) {
 	}
 }
 
+// /durum'un "bugun"u kullanicinin takvim gunu olmali, UTC'nin degil:
+// UTC+3'te yerel gece yarisi ile UTC gece yarisi 3 saat kayar ve
+// aradaki olaylar ozete hic girmezdi. run.go bu yuzden handleUpdate'e
+// time.Now() verir, time.Now().UTC() degil.
+func TestDailySummaryUsesLocalCalendarDayNotUTC(t *testing.T) {
+	dir := t.TempDir()
+	zone := time.FixedZone("TestZone", 3*3600)
+	// Yerel gece yarisindan 30 dk sonra, ama UTC gece yarisindan once.
+	ev := time.Date(2026, 8, 23, 0, 30, 0, 0, zone)
+	if err := store.Append(dir, store.Event{TS: ev, Ev: "unlock", Who: "p1"}); err != nil {
+		t.Fatalf("Append: %v", err)
+	}
+	now := time.Date(2026, 8, 23, 5, 0, 0, 0, zone)
+
+	got, err := dailySummary(dir, &config.Config{}, now)
+	if err != nil {
+		t.Fatalf("dailySummary: %v", err)
+	}
+	if !strings.Contains(got, "kapı 1 kez açıldı") {
+		t.Errorf("yerel gun basindaki olay ozete girmedi: %q", got)
+	}
+
+	// Ayni an UTC'ye cevrilerek verilseydi olay gunun disinda kalirdi;
+	// testin bosa donmedigini bu gosterir.
+	if got, err := dailySummary(dir, &config.Config{}, now.UTC()); err != nil {
+		t.Fatalf("dailySummary: %v", err)
+	} else if got != "Bugün henüz hareket yok." {
+		t.Errorf("UTC gunu bu olayi icermemeliydi: %q", got)
+	}
+}
+
 func TestFormatDurUnderHour(t *testing.T) {
 	if got := formatDur(600); got != "10dk" {
 		t.Errorf("got %q want 10dk", got)

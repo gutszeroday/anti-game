@@ -14,7 +14,7 @@ import (
 //   - onaysiz sohbetten, bekleyen eslestirme koduyla birebir eslesen
 //     metin -> sohbet onaylanir ve config'e yazilir
 //   - diger her sey yok sayilir (botun varligini yabancilara sizdirmamak icin)
-func handleUpdate(dir string, cfg *config.Config, st *store.State, u telegram.Update, client sender, now time.Time) error {
+func handleUpdate(dir string, cfg *config.Config, ts *store.TelegramState, u telegram.Update, client sender, now time.Time) error {
 	if u.Chat == 0 {
 		return nil
 	}
@@ -31,10 +31,10 @@ func handleUpdate(dir string, cfg *config.Config, st *store.State, u telegram.Up
 		return nil
 	}
 
-	if st.TelegramPendingCode == "" || st.TelegramPendingExpiry == nil || now.After(*st.TelegramPendingExpiry) {
+	if ts.PendingCode == "" || ts.PendingExpiry == nil || now.After(*ts.PendingExpiry) {
 		return nil
 	}
-	if text != st.TelegramPendingCode {
+	if text != ts.PendingCode {
 		return nil
 	}
 
@@ -42,9 +42,9 @@ func handleUpdate(dir string, cfg *config.Config, st *store.State, u telegram.Up
 	if err := config.Save(dir, cfg); err != nil {
 		return err
 	}
-	st.TelegramPendingCode = ""
-	st.TelegramPendingExpiry = nil
-	if err := store.SaveState(dir, st); err != nil {
+	ts.PendingCode = ""
+	ts.PendingExpiry = nil
+	if err := store.SaveTelegramState(dir, ts); err != nil {
 		return err
 	}
 	return client.SendMessage(u.Chat, "Kaydınız tamamlandı.")

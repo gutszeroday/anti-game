@@ -12,11 +12,11 @@ import (
 func TestHandleUpdateApprovedChatDurumRepliesWithSummary(t *testing.T) {
 	dir := t.TempDir()
 	cfg := &config.Config{TelegramChats: []config.TelegramChat{{ID: 7}}}
-	st := &store.State{}
+	ts := &store.TelegramState{}
 	fs := &fakeSender{}
 	now := time.Date(2026, 8, 23, 12, 0, 0, 0, time.UTC)
 
-	if err := handleUpdate(dir, cfg, st, telegram.Update{Chat: 7, Text: "/durum"}, fs, now); err != nil {
+	if err := handleUpdate(dir, cfg, ts, telegram.Update{Chat: 7, Text: "/durum"}, fs, now); err != nil {
 		t.Fatalf("handleUpdate: %v", err)
 	}
 	if len(fs.sent) != 1 || fs.sent[0].chat != 7 {
@@ -27,10 +27,10 @@ func TestHandleUpdateApprovedChatDurumRepliesWithSummary(t *testing.T) {
 func TestHandleUpdateUnapprovedChatCommandIsIgnored(t *testing.T) {
 	dir := t.TempDir()
 	cfg := &config.Config{}
-	st := &store.State{}
+	ts := &store.TelegramState{}
 	fs := &fakeSender{}
 
-	if err := handleUpdate(dir, cfg, st, telegram.Update{Chat: 99, Text: "/durum"}, fs, time.Now()); err != nil {
+	if err := handleUpdate(dir, cfg, ts, telegram.Update{Chat: 99, Text: "/durum"}, fs, time.Now()); err != nil {
 		t.Fatalf("handleUpdate: %v", err)
 	}
 	if len(fs.sent) != 0 {
@@ -48,17 +48,17 @@ func TestHandleUpdateMatchingPairingCodeApprovesChat(t *testing.T) {
 		t.Fatalf("config.Load: %v", err)
 	}
 	expiry := time.Now().Add(10 * time.Minute)
-	st := &store.State{TelegramPendingCode: "483920", TelegramPendingExpiry: &expiry}
+	ts := &store.TelegramState{PendingCode: "483920", PendingExpiry: &expiry}
 	fs := &fakeSender{}
 
-	if err := handleUpdate(dir, cfg, st, telegram.Update{Chat: 42, Text: "483920"}, fs, time.Now()); err != nil {
+	if err := handleUpdate(dir, cfg, ts, telegram.Update{Chat: 42, Text: "483920"}, fs, time.Now()); err != nil {
 		t.Fatalf("handleUpdate: %v", err)
 	}
 	if !approvedChat(cfg, 42) {
 		t.Fatalf("sohbet onaylanmadi: %+v", cfg.TelegramChats)
 	}
-	if st.TelegramPendingCode != "" || st.TelegramPendingExpiry != nil {
-		t.Fatalf("bekleyen kod temizlenmedi: %+v", st)
+	if ts.PendingCode != "" || ts.PendingExpiry != nil {
+		t.Fatalf("bekleyen kod temizlenmedi: %+v", ts)
 	}
 	onDisk, err := config.Load(dir)
 	if err != nil {
@@ -76,10 +76,10 @@ func TestHandleUpdateExpiredPairingCodeIsIgnored(t *testing.T) {
 	dir := t.TempDir()
 	cfg := &config.Config{}
 	expiry := time.Now().Add(-time.Minute)
-	st := &store.State{TelegramPendingCode: "111111", TelegramPendingExpiry: &expiry}
+	ts := &store.TelegramState{PendingCode: "111111", PendingExpiry: &expiry}
 	fs := &fakeSender{}
 
-	if err := handleUpdate(dir, cfg, st, telegram.Update{Chat: 42, Text: "111111"}, fs, time.Now()); err != nil {
+	if err := handleUpdate(dir, cfg, ts, telegram.Update{Chat: 42, Text: "111111"}, fs, time.Now()); err != nil {
 		t.Fatalf("handleUpdate: %v", err)
 	}
 	if approvedChat(cfg, 42) {
@@ -91,10 +91,10 @@ func TestHandleUpdateWrongTextDoesNotApprove(t *testing.T) {
 	dir := t.TempDir()
 	cfg := &config.Config{}
 	expiry := time.Now().Add(10 * time.Minute)
-	st := &store.State{TelegramPendingCode: "483920", TelegramPendingExpiry: &expiry}
+	ts := &store.TelegramState{PendingCode: "483920", PendingExpiry: &expiry}
 	fs := &fakeSender{}
 
-	if err := handleUpdate(dir, cfg, st, telegram.Update{Chat: 42, Text: "yanlış"}, fs, time.Now()); err != nil {
+	if err := handleUpdate(dir, cfg, ts, telegram.Update{Chat: 42, Text: "yanlış"}, fs, time.Now()); err != nil {
 		t.Fatalf("handleUpdate: %v", err)
 	}
 	if approvedChat(cfg, 42) {
@@ -105,10 +105,10 @@ func TestHandleUpdateWrongTextDoesNotApprove(t *testing.T) {
 func TestHandleUpdateNonMessageUpdateIsIgnored(t *testing.T) {
 	dir := t.TempDir()
 	cfg := &config.Config{}
-	st := &store.State{}
+	ts := &store.TelegramState{}
 	fs := &fakeSender{}
 
-	if err := handleUpdate(dir, cfg, st, telegram.Update{UpdateID: 1, Chat: 0}, fs, time.Now()); err != nil {
+	if err := handleUpdate(dir, cfg, ts, telegram.Update{UpdateID: 1, Chat: 0}, fs, time.Now()); err != nil {
 		t.Fatalf("handleUpdate: %v", err)
 	}
 	if len(fs.sent) != 0 {

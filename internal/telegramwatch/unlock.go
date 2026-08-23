@@ -21,20 +21,20 @@ type sender interface {
 // scanUnlocks, son taramadan bu yana yazilan "unlock" olaylarini
 // onayli sohbetlere bildirir ve tarama isaretini ilerletir.
 //
-// Ilk cagrida (state.json'da isaret yoksa) gecmis taranmaz, isaret
-// yalnizca "simdi"ye kurulur: kurulumdan once acilmis kapilar icin
-// geriye donuk bildirim atilmaz.
+// Ilk cagrida (telegram_state.json'da isaret yoksa) gecmis taranmaz,
+// isaret yalnizca "simdi"ye kurulur: kurulumdan once acilmis kapilar
+// icin geriye donuk bildirim atilmaz.
 func scanUnlocks(dir string, cfg *config.Config, client sender, now time.Time) error {
-	st, err := store.LoadState(dir)
+	ts, err := store.LoadTelegramState(dir)
 	if err != nil {
 		return err
 	}
-	if st.TelegramLastUnlockTS == nil {
-		st.TelegramLastUnlockTS = &now
-		return store.SaveState(dir, st)
+	if ts.LastUnlockTS == nil {
+		ts.LastUnlockTS = &now
+		return store.SaveTelegramState(dir, ts)
 	}
 
-	from := st.TelegramLastUnlockTS.Add(time.Nanosecond)
+	from := ts.LastUnlockTS.Add(time.Nanosecond)
 	if from.After(now) {
 		return nil
 	}
@@ -43,7 +43,7 @@ func scanUnlocks(dir string, cfg *config.Config, client sender, now time.Time) e
 		return err
 	}
 
-	last := *st.TelegramLastUnlockTS
+	last := *ts.LastUnlockTS
 	for _, e := range events {
 		if e.Ev != "unlock" {
 			continue
@@ -58,11 +58,11 @@ func scanUnlocks(dir string, cfg *config.Config, client sender, now time.Time) e
 			last = e.TS
 		}
 	}
-	if !last.After(*st.TelegramLastUnlockTS) {
+	if !last.After(*ts.LastUnlockTS) {
 		return nil
 	}
-	st.TelegramLastUnlockTS = &last
-	return store.SaveState(dir, st)
+	ts.LastUnlockTS = &last
+	return store.SaveTelegramState(dir, ts)
 }
 
 // formatUnlock, kapi acma bildirim metnini uretir.

@@ -104,15 +104,15 @@ func showNotifications(parent uintptr, dir string) {
 				setText(status, "Kod üretilemedi: "+err.Error())
 				return
 			}
-			st, err := store.LoadState(dir)
+			ts, err := store.LoadTelegramState(dir)
 			if err != nil {
 				setText(status, "Durum okunamadı: "+err.Error())
 				return
 			}
 			expiry := time.Now().Add(pairingCodeTTL)
-			st.TelegramPendingCode = code
-			st.TelegramPendingExpiry = &expiry
-			if err := store.SaveState(dir, st); err != nil {
+			ts.PendingCode = code
+			ts.PendingExpiry = &expiry
+			if err := store.SaveTelegramState(dir, ts); err != nil {
 				setText(status, "Durum yazılamadı: "+err.Error())
 				return
 			}

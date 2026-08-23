@@ -45,20 +45,20 @@ func TestScanUnlocksFirstRunSetsBookmarkWithoutSending(t *testing.T) {
 	if len(fs.sent) != 0 {
 		t.Fatalf("ilk taramada gecmis bildirilmemeli, %d mesaj gonderildi", len(fs.sent))
 	}
-	st, err := store.LoadState(dir)
+	ts, err := store.LoadTelegramState(dir)
 	if err != nil {
-		t.Fatalf("LoadState: %v", err)
+		t.Fatalf("LoadTelegramState: %v", err)
 	}
-	if st.TelegramLastUnlockTS == nil || !st.TelegramLastUnlockTS.Equal(now) {
-		t.Fatalf("isaret simdiye kurulmadi: %+v", st.TelegramLastUnlockTS)
+	if ts.LastUnlockTS == nil || !ts.LastUnlockTS.Equal(now) {
+		t.Fatalf("isaret simdiye kurulmadi: %+v", ts.LastUnlockTS)
 	}
 }
 
 func TestScanUnlocksSendsNewUnlocksToAllChats(t *testing.T) {
 	dir := t.TempDir()
 	base := time.Date(2026, 8, 23, 10, 0, 0, 0, time.UTC)
-	if err := store.SaveState(dir, &store.State{TelegramLastUnlockTS: &base}); err != nil {
-		t.Fatalf("SaveState: %v", err)
+	if err := store.SaveTelegramState(dir, &store.TelegramState{LastUnlockTS: &base}); err != nil {
+		t.Fatalf("SaveTelegramState: %v", err)
 	}
 	evTS := base.Add(5 * time.Minute)
 	if err := store.Append(dir, store.Event{TS: evTS, Ev: "unlock", Who: "p1"}); err != nil {
@@ -83,20 +83,20 @@ func TestScanUnlocksSendsNewUnlocksToAllChats(t *testing.T) {
 			t.Errorf("beklenmeyen mesaj: got %q want %q", m.text, want)
 		}
 	}
-	st, err := store.LoadState(dir)
+	ts, err := store.LoadTelegramState(dir)
 	if err != nil {
-		t.Fatalf("LoadState: %v", err)
+		t.Fatalf("LoadTelegramState: %v", err)
 	}
-	if !st.TelegramLastUnlockTS.Equal(evTS) {
-		t.Fatalf("isaret ilerlemedi: %+v", st.TelegramLastUnlockTS)
+	if !ts.LastUnlockTS.Equal(evTS) {
+		t.Fatalf("isaret ilerlemedi: %+v", ts.LastUnlockTS)
 	}
 }
 
 func TestScanUnlocksOneChatFailureDoesNotBlockOthersOrBookmark(t *testing.T) {
 	dir := t.TempDir()
 	base := time.Date(2026, 8, 23, 10, 0, 0, 0, time.UTC)
-	if err := store.SaveState(dir, &store.State{TelegramLastUnlockTS: &base}); err != nil {
-		t.Fatalf("SaveState: %v", err)
+	if err := store.SaveTelegramState(dir, &store.TelegramState{LastUnlockTS: &base}); err != nil {
+		t.Fatalf("SaveTelegramState: %v", err)
 	}
 	evTS := base.Add(time.Minute)
 	if err := store.Append(dir, store.Event{TS: evTS, Ev: "unlock", Who: ""}); err != nil {
@@ -111,12 +111,12 @@ func TestScanUnlocksOneChatFailureDoesNotBlockOthersOrBookmark(t *testing.T) {
 	if len(fs.sent) != 1 || fs.sent[0].chat != 2 {
 		t.Fatalf("basarisiz sohbet digerini engellememeli: %+v", fs.sent)
 	}
-	st, err := store.LoadState(dir)
+	ts, err := store.LoadTelegramState(dir)
 	if err != nil {
-		t.Fatalf("LoadState: %v", err)
+		t.Fatalf("LoadTelegramState: %v", err)
 	}
-	if !st.TelegramLastUnlockTS.Equal(evTS) {
-		t.Fatalf("basarisiz gonderim isareti ilerletmeyi engellememeli: %+v", st.TelegramLastUnlockTS)
+	if !ts.LastUnlockTS.Equal(evTS) {
+		t.Fatalf("basarisiz gonderim isareti ilerletmeyi engellememeli: %+v", ts.LastUnlockTS)
 	}
 }
 

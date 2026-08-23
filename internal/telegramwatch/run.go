@@ -23,9 +23,11 @@ const (
 // tokenla sifir trafik uretirler.
 //
 // watch paketiyle bellek ici hicbir sey paylasilmaz: ikisi de kendi
-// config.Load/store.LoadState dongusunu yurutur, tipki gate ve watch
-// sureclerinin bugun de state.json/config.json uzerinden kilitsiz
-// haberlestigi gibi.
+// config.Load dongusunu yurutur, tipki gate ve watch sureclerinin bugun
+// de state.json/config.json uzerinden kilitsiz haberlestigi gibi. Bu
+// paketin calisma zamani durumu state.json'da degil ayri bir dosyada
+// tutulur (bkz. store.TelegramState): watch, state.json'u eski bir
+// bellek ici kopyadan geri yazip buradaki yazimlari yok edebilirdi.
 func Run(ctx context.Context, dirFunc func() string) error {
 	done := make(chan struct{}, 2)
 	go func() { runUnlockScanner(ctx, dirFunc); done <- struct{}{} }()
@@ -68,14 +70,14 @@ func runCommandListener(ctx context.Context, dirFunc func() string) {
 			continue
 		}
 		client := telegram.Client{Token: cfg.TelegramToken}
-		st, err := store.LoadState(dir)
+		ts, err := store.LoadTelegramState(dir)
 		if err != nil {
 			if !sleepCtx(ctx, updatesRetryWait) {
 				return
 			}
 			continue
 		}
-		updates, err := client.GetUpdates(st.TelegramOffset, updatesLongPollS)
+		updates, err := client.GetUpdates(ts.Offset, updatesLongPollS)
 		if err != nil {
 			if !sleepCtx(ctx, updatesRetryWait) {
 				return
@@ -85,11 +87,24 @@ func runCommandListener(ctx context.Context, dirFunc func() string) {
 		if len(updates) == 0 {
 			continue
 		}
-		for _, u := range updates {
-			_ = handleUpdate(dir, cfg, st, u, client, time.Now().UTC())
-			st.TelegramOffset = u.UpdateID + 1
+		// Config anketten SONRA yeniden okunur: yukaridaki kopya 25-30
+		// saniye once yuklendi ve eslestirme basarili olursa
+		// handleUpdate onu oldugu gibi diske yazar — arada UI'dan
+		// eklenen kisi/oyun o eski kopyayla geri alinirdi.
+		cfg, err = config.Load(dir)
+		if err != nil {
+			if !sleepCtx(ctx, updatesRetryWait) {
+				return
+			}
+			continue
 		}
-		_ = store.SaveState(dir, st)
+		for _, u := range updates {
+			// Yerel saat: /durum ozetinin "bugun"u kullanicinin takvim
+			// gunu olmali (bkz. dailySummary, now.Location()).
+			_ = handleUpdate(dir, cfg, ts, u, client, time.Now())
+			ts.Offset = u.UpdateID + 1
+		}
+		_ = store.SaveTelegramState(dir, ts)
 	}
 }
 
