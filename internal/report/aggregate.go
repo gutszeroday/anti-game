@@ -100,7 +100,6 @@ func Aggregate(ev []store.Event, cfg *config.Config, now time.Time, loc *time.Lo
 	games := map[string]*GameTotal{}
 	days := map[time.Time]int{}
 	usage := map[string]int{}
-	weeks := map[time.Time]int{}
 	persons := map[string]*PersonTotal{}
 	var beats []time.Time
 
@@ -132,7 +131,6 @@ func Aggregate(ev []store.Event, cfg *config.Config, now time.Time, loc *time.Lo
 			// asan oturumlar ertesi gune degil basladigi gune ait olmali.
 			start := e.TS.Add(-time.Duration(e.DurS) * time.Second)
 			w := weekStart(start, loc)
-			weeks[w] += e.DurS
 
 			switch {
 			case !w.Before(thisWeek):
@@ -197,11 +195,6 @@ func Aggregate(ev []store.Event, cfg *config.Config, now time.Time, loc *time.Lo
 	}
 	sort.Slice(s.Days, func(i, j int) bool { return s.Days[i].Day.Before(s.Days[j].Day) })
 
-	for i := 3; i >= 0; i-- {
-		w := thisWeek.AddDate(0, 0, -7*i)
-		s.Weeks = append(s.Weeks, WeekTotal{Start: w, DurS: weeks[w]})
-	}
-
 	for exe, v := range usage {
 		if v >= suggestThreshold {
 			s.Suggestions = append(s.Suggestions, Suggestion{Exe: exe, DurS: v})
@@ -211,6 +204,67 @@ func Aggregate(ev []store.Event, cfg *config.Config, now time.Time, loc *time.Lo
 
 	s.Gaps = findGaps(beats)
 	return s
+}
+
+// WeeklyTotals, kurulumdan (ilk kayitli olay) bu hafta DAHIL, her
+// haftanin toplam oyun suresini kronolojik sirayla dondurur.
+//
+// Tek bir "%X azaldi" sayisina indirgemek yerine ham haftalik veriyi
+// veriyoruz: kullanici trendi kendi gozuyle gorebilsin, tek bir
+// ortalama-yuzde hesabi hangi yone gittigini gizler ya da yanlis
+// yorumlanabilir. Bos haftalar da (DurS=0) listede yer alir, yoksa
+// "hic oynanmadi" haftalari sessizce atlanip grafik/liste yanlis
+// aralikli gorunurdu.
+//
+// Kurulum tarihi, en eski kayitli ayin ilk gunu DEGIL, o ay icindeki ilk
+// olayin gercek zamanidir: ay basi kullanilsaydi (ornegin uygulama ayin
+// 20'sinde kurulduysa) 1-19 arasi hicbir olayin olmadigi hayalet bir
+// hafta listenin basina eklenirdi.
+//
+// Kurulum bu hafta olduysa (gosterilecek gecmis hafta yok) bos liste
+// doner.
+func WeeklyTotals(dir string, cfg *config.Config, thisWeekStart time.Time, loc *time.Location) ([]WeekTotal, error) {
+	earliestMonth, found, err := store.EarliestEventMonth(dir)
+	if err != nil || !found {
+		return nil, err
+	}
+	if earliestMonth.After(thisWeekStart) {
+		return nil, nil
+	}
+	// store.Read olaylari zaman sirasinda dondurur (bkz. Read belgesi):
+	// ev[0] bu araliktaki en eski olaydir, kurulum zamani odur.
+	ev, err := store.Read(dir, earliestMonth, thisWeekStart.AddDate(0, 0, 7).Add(-time.Second))
+	if err != nil {
+		return nil, err
+	}
+	if len(ev) == 0 {
+		return nil, nil
+	}
+	firstWeek := weekStart(ev[0].TS, loc)
+	if firstWeek.After(thisWeekStart) {
+		return nil, nil
+	}
+
+	totals := map[time.Time]int{}
+	for _, e := range ev {
+		if e.Ev != "game_end" {
+			continue
+		}
+		if g, gated := cfg.Match(e.Exe, ""); gated && g.Launcher {
+			continue
+		}
+		// Oturum, bitis anina degil basladigi ana ait sayilir (bkz.
+		// Aggregate'teki ayni kural): gece yarisini asan oturumlar
+		// basladigi haftaya yazilmali.
+		start := e.TS.Add(-time.Duration(e.DurS) * time.Second)
+		totals[weekStart(start, loc)] += e.DurS
+	}
+
+	var out []WeekTotal
+	for w := firstWeek; !w.After(thisWeekStart); w = w.AddDate(0, 0, 7) {
+		out = append(out, WeekTotal{Start: w, DurS: totals[w]})
+	}
+	return out, nil
 }
 
 // spreadHours, oturumu basladigi andan itibaren saat dilimlerine dagitir.

@@ -26,6 +26,7 @@ import (
 	"github.com/guts/antigame/internal/setup"
 	"github.com/guts/antigame/internal/single"
 	"github.com/guts/antigame/internal/status"
+	"github.com/guts/antigame/internal/store"
 	"github.com/guts/antigame/internal/task"
 	"github.com/guts/antigame/internal/telegramwatch"
 	"github.com/guts/antigame/internal/tray"
@@ -295,6 +296,18 @@ func spawnWatcher() error {
 	return nil
 }
 
+// notifyWatchStop, izleyici kapaninca olay gunluge yazar ve kapanis
+// bildirimine izin veren sohbetlere haber verir. cfg burada TAZE
+// okunur: calisirken /kapanis_bildirimi ile degismis olabilir, runWatch
+// baslangicindaki eski kopya kullanilirsa toggle kapanista gorulmez.
+func notifyWatchStop(dir string) {
+	now := time.Now()
+	_ = store.Append(dir, store.Event{TS: now, Ev: "watch_stop"})
+	if cfg, err := config.Load(dir); err == nil {
+		_ = telegramwatch.NotifyClose(dir, cfg, now)
+	}
+}
+
 func runWatch(background bool) error {
 	if !background {
 		return spawnWatcher()
@@ -322,6 +335,11 @@ func runWatch(background bool) error {
 	if err != nil {
 		return err
 	}
+	// Izleyici duzgun kapaninca (Ctrl+C, tepsiden cikis, oturum kapanisi)
+	// olay gunluge yazilir ve kapanis bildirimine izin veren sohbetlere
+	// haber verilir. Ani kesilmeler (gorev yoneticisi, elektrik) bu
+	// defer'a hic ugramaz, yakalanamaz.
+	defer notifyWatchStop(dir)
 	// Spec §10: liste bossa kapida durdurma yapilmaz, yalnizca sure tutulur.
 	// Bu sessizce olmamali; kullanici korumasiz oldugunu bilmeli.
 	if len(cfg.Gated) == 0 {

@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 )
 
@@ -96,4 +97,32 @@ func Read(dir string, from, to time.Time) ([]Event, error) {
 		}
 	}
 	return out, nil
+}
+
+// EarliestEventMonth, gunlukteki en eski aylik dosyanin ayin ilk gunudur
+// (UTC) — "kurulumdan beri" kiyaslari icin baslangic noktasi olarak
+// kullanilir. Hicbir olay dosyasi yoksa ok=false doner.
+func EarliestEventMonth(dir string) (t time.Time, ok bool, err error) {
+	entries, err := os.ReadDir(dir)
+	if os.IsNotExist(err) {
+		return time.Time{}, false, nil
+	}
+	if err != nil {
+		return time.Time{}, false, err
+	}
+	for _, e := range entries {
+		name := e.Name()
+		if !strings.HasPrefix(name, "events-") || !strings.HasSuffix(name, ".jsonl") {
+			continue
+		}
+		var y, m int
+		if _, err := fmt.Sscanf(name, "events-%04d-%02d.jsonl", &y, &m); err != nil {
+			continue
+		}
+		cand := time.Date(y, time.Month(m), 1, 0, 0, 0, 0, time.UTC)
+		if !ok || cand.Before(t) {
+			t, ok = cand, true
+		}
+	}
+	return t, ok, nil
 }

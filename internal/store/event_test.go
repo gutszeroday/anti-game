@@ -62,6 +62,35 @@ func TestReadFiltersByRangeAcrossMonths(t *testing.T) {
 	}
 }
 
+func TestEarliestEventMonthPicksOldest(t *testing.T) {
+	dir := t.TempDir()
+	Append(dir, Event{TS: time.Date(2026, 3, 15, 0, 0, 0, 0, time.UTC), Ev: "usage"})
+	Append(dir, Event{TS: time.Date(2026, 1, 5, 0, 0, 0, 0, time.UTC), Ev: "usage"})
+	Append(dir, Event{TS: time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC), Ev: "usage"})
+
+	got, ok, err := EarliestEventMonth(dir)
+	if err != nil {
+		t.Fatalf("EarliestEventMonth: %v", err)
+	}
+	if !ok {
+		t.Fatalf("ok=false, en az bir ay var")
+	}
+	want := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	if !got.Equal(want) {
+		t.Errorf("got %v want %v", got, want)
+	}
+}
+
+func TestEarliestEventMonthEmptyDir(t *testing.T) {
+	_, ok, err := EarliestEventMonth(t.TempDir())
+	if err != nil {
+		t.Fatalf("EarliestEventMonth: %v", err)
+	}
+	if ok {
+		t.Fatalf("bos dizinde ok=true olmamali")
+	}
+}
+
 func TestReadEmptyDirReturnsNoError(t *testing.T) {
 	got, err := Read(t.TempDir(), time.Now().Add(-time.Hour), time.Now())
 	if err != nil {

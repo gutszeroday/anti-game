@@ -10,12 +10,9 @@ import (
 func TestTelegramStateRoundTrip(t *testing.T) {
 	dir := t.TempDir()
 	ts := time.Date(2026, 8, 23, 9, 30, 0, 0, time.UTC)
-	expiry := ts.Add(10 * time.Minute)
 	in := &TelegramState{
-		Offset:        7,
-		LastUnlockTS:  &ts,
-		PendingCode:   "483920",
-		PendingExpiry: &expiry,
+		Offset:       7,
+		LastUnlockTS: &ts,
 	}
 	if err := SaveTelegramState(dir, in); err != nil {
 		t.Fatalf("SaveTelegramState: %v", err)
@@ -30,12 +27,6 @@ func TestTelegramStateRoundTrip(t *testing.T) {
 	if out.LastUnlockTS == nil || !out.LastUnlockTS.Equal(ts) {
 		t.Errorf("tarama isareti korunmadi: %+v", out.LastUnlockTS)
 	}
-	if out.PendingCode != "483920" {
-		t.Errorf("bekleyen kod korunmadi: %q", out.PendingCode)
-	}
-	if out.PendingExpiry == nil || !out.PendingExpiry.Equal(expiry) {
-		t.Errorf("kod suresi korunmadi: %+v", out.PendingExpiry)
-	}
 }
 
 func TestLoadTelegramStateDefaultEmpty(t *testing.T) {
@@ -43,8 +34,7 @@ func TestLoadTelegramStateDefaultEmpty(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadTelegramState: %v", err)
 	}
-	if ts.Offset != 0 || ts.LastUnlockTS != nil ||
-		ts.PendingCode != "" || ts.PendingExpiry != nil {
+	if ts.Offset != 0 || ts.LastUnlockTS != nil {
 		t.Errorf("bos durumda telegram alanlari sifir olmali: %+v", ts)
 	}
 }

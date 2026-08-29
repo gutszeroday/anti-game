@@ -349,6 +349,36 @@ func TestStillTracksTimeWhenPairingIsMissing(t *testing.T) {
 	}
 }
 
+func TestDoesNotBlockWhenCodeUnlockOff(t *testing.T) {
+	f := &fakes{procs: []winproc.Proc{{PID: 42, Exe: "VALORANT.exe"}}}
+	w, _ := newWatcher(t, f)
+	w.o.Cfg.CodeUnlockOff = true
+
+	if err := w.Step(t0); err != nil {
+		t.Fatal(err)
+	}
+	if len(f.killed) != 0 {
+		t.Fatalf("kod ile acma kapaliyken oyun oldurüldu: %v", f.killed)
+	}
+	if len(f.gateCalls) != 0 {
+		t.Errorf("kod ile acma kapaliyken kapi penceresi istendi: %v", f.gateCalls)
+	}
+}
+
+func TestStillTracksTimeWhenCodeUnlockOff(t *testing.T) {
+	f := &fakes{procs: []winproc.Proc{{PID: 42, Exe: "VALORANT.exe"}}}
+	w, dir := newWatcher(t, f)
+	w.o.Cfg.CodeUnlockOff = true
+
+	w.Step(t0)
+	f.procs = nil
+	w.Step(t0.Add(30 * time.Minute))
+
+	if !hasEvent(events(t, dir), "game_end", "VALORANT.exe") {
+		t.Error("kod ile acma kapaliyken sure hic kaydedilmedi")
+	}
+}
+
 func TestLauncherLeftOpenEventuallyRelocksGate(t *testing.T) {
 	// Riot Client tepside acik unutulunca oturum sonsuza kadar
 	// tazeleniyordu: sabah alinan kodla gun boyu girip cikilabiliyordu.

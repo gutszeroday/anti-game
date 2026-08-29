@@ -98,3 +98,73 @@ func showPair(parent uintptr, account string) (secret []byte, counter uint64, ok
 	m.run(parent)
 	return secret, counter, ok
 }
+
+// showAssignKey, bir kisiye anahtar atama diyalogunu acar. showPair'den
+// farkli olarak onay kodu istemez: anahtar uretilir, QR gosterilir,
+// admin "Ekle"ye basinca kisi hemen eklenir. Kod geri istenmedigi icin
+// anahtarin dogru aktarildigina dair bir dogrulama yoktur — admin
+// anahtari elden ya da guvenli bir kanaldan kendisi paylastigina
+// guvenir. Kullanim: yeni kisi ekleme akisi (bkz. people.go addID).
+func showAssignKey(parent uintptr, account string) (secret []byte, ok bool) {
+	s, err := pairing.NewSecret()
+	if err != nil {
+		warn(parent, "antigame", "Anahtar üretilemedi: "+err.Error())
+		return nil, false
+	}
+	uri := pairing.OTPAuthURI(s, account)
+
+	const qrPt = 240
+	img, err := pairing.QRImage(uri, qrPt*3)
+	if err != nil {
+		warn(parent, "antigame", "QR kod üretilemedi: "+err.Error())
+		return nil, false
+	}
+
+	m, err := newModal(parent, "Anahtar oluştur — "+account, 500, 420)
+	if err != nil {
+		warn(parent, "antigame", "Pencere açılamadı: "+err.Error())
+		return nil, false
+	}
+
+	qrRect := Rect{m.s(130), m.s(12), m.s(qrPt), m.s(qrPt)}
+	m.onPaint = func(hdc uintptr) { drawImage(hdc, img, qrRect) }
+
+	m.label("Google Authenticator veya benzeri bir uygulamada \"QR kodu tara\" ile "+
+		"okutun, ya da anahtarı elle paylaşın.", Rect{12, 262, 476, 34})
+
+	status := m.label("", Rect{12, 302, 476, 70})
+
+	_, revealID := m.button("Anahtarı göster", Rect{12, 380, 130, 26}, variantSecondary, false)
+	copyBtn, copyID := m.button("Kopyala", Rect{152, 380, 90, 26}, variantSecondary, false)
+	// Anahtar gosterilmeden kopyalanacak bir sey yok; dugmenin
+	// tiklanabilir durmasi yaniltici olurdu.
+	enable(copyBtn, false)
+
+	_, okID := m.button("Ekle", Rect{292, 380, 90, 28}, variantPrimary, true)
+	_, cancelID := m.button("Vazgeç", Rect{394, 380, 90, 28}, variantSecondary, false)
+
+	m.onCmd = func(id int) {
+		switch id {
+		case cancelID, idCancel:
+			m.close()
+		case revealID:
+			setText(status, "DİKKAT: Bu anahtarı gören herkes kapıyı açabilir. "+
+				"Arkadaşınıza iletin, kendinizde saklamayın.\n\n"+
+				pairing.GroupKey(pairing.EncodeKey(s)))
+			enable(copyBtn, true)
+		case copyID:
+			if err := copySecret(m.hwnd, pairing.GroupKey(pairing.EncodeKey(s))); err != nil {
+				setText(status, "Kopyalanamadı: "+err.Error())
+				return
+			}
+			setText(status, "Anahtar panoya kopyalandı. Pano geçmişine (Win+V) "+
+				"yazılmadı, ama gönderdikten sonra panoyu temizleyin.")
+		case okID, idOK:
+			secret, ok = s, true
+			m.close()
+		}
+	}
+
+	m.run(parent)
+	return secret, ok
+}

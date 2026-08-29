@@ -97,6 +97,7 @@ var (
 	procDblClickTime    = user32.NewProc("GetDoubleClickTime")
 	procShellNotifyIcon = shell32.NewProc("Shell_NotifyIconW")
 	procGetModuleHandle = kernel32.NewProc("GetModuleHandleW")
+	procRegisterWinMsg  = user32.NewProc("RegisterWindowMessageW")
 )
 
 const (
@@ -130,8 +131,7 @@ const (
 	tpmReturnCmd   = 0x0100
 	mfString       = 0x0000
 
-	idiApplication = 32512
-	mbIconInfo     = 0x00000040
+	mbIconInfo = 0x00000040
 
 	className = "AntigameTray"
 
@@ -186,6 +186,18 @@ type notifyIconData struct {
 // Pencere durumu paket duzeyinde: WndProc bir C geri cagrimidir ve kapali
 // degisken tasiyamaz. Process basina tek tepsi simgesi acildigi icin guvenli.
 var curOpts Options
+
+// curNID, tepsiye eklenen son simge verisidir. TaskbarCreated geldiginde
+// (Explorer yeniden baslarsa, ya da izleyici Explorer hazir olmadan
+// Oturum Acilisi tetikleyicisiyle erken baslarsa) simgeyi ayni veriyle
+// yeniden eklemek icin saklanir.
+var curNID notifyIconData
+
+// msgTaskbarCreated, Explorer'in tepsisi (yeniden) hazir oldugunda
+// yayinladigi mesajin kimligidir. RegisterWindowMessageW tum
+// process'lerde ayni degeri dondurur; 0 hic gorunmeyecek bir deger
+// oldugu icin "henuz kaydedilmedi" olarak da kullanilabilir.
+var msgTaskbarCreated uint32
 
 // Pencere sinifi process basina bir kez kaydedilir; ikinci kayit
 // "sinif zaten var" hatasi verir.
@@ -269,6 +281,13 @@ func refreshTip(hwnd uintptr) {
 }
 
 func wndProc(hwnd, message, wparam, lparam uintptr) uintptr {
+	if msgTaskbarCreated != 0 && uint32(message) == msgTaskbarCreated {
+		// Explorer tepsisini (yeniden) hazirladi: simge onceki eklemede
+		// kaybolmus olabilir (erken baslama) ya da Explorer coktu/yeniden
+		// basladi. Ayni veriyle yeniden ekleniyor.
+		procShellNotifyIcon.Call(nimAdd, uintptr(unsafe.Pointer(&curNID)))
+		return 0
+	}
 	switch message {
 	case wmTrayMessage:
 		switch uint32(lparam) {
@@ -328,6 +347,9 @@ func Run(ctx context.Context, o Options) error {
 	if err := registerClass(); err != nil {
 		return err
 	}
+	if r, _, _ := procRegisterWinMsg.Call(uintptr(unsafe.Pointer(utf16("TaskbarCreated")))); r != 0 {
+		msgTaskbarCreated = uint32(r)
+	}
 	hInst, _, _ := procGetModuleHandle.Call(0)
 
 	// Pencere hicbir zaman gosterilmiyor; yalnizca simgenin mesajlarini
@@ -341,7 +363,7 @@ func Run(ctx context.Context, o Options) error {
 	}
 	defer procDestroyWindow.Call(hwnd)
 
-	icon, _, _ := procLoadIcon.Call(0, idiApplication)
+	icon, _, _ := procLoadIcon.Call(hInst, 1)
 	nid := notifyIconData{
 		HWnd:             windows.Handle(hwnd),
 		UID:              1,
@@ -352,6 +374,7 @@ func Run(ctx context.Context, o Options) error {
 	nid.CbSize = uint32(unsafe.Sizeof(nid))
 	copy(nid.SzTip[:len(nid.SzTip)-1], windows.StringToUTF16(o.tipText()))
 
+	curNID = nid
 	if r, _, err := procShellNotifyIcon.Call(nimAdd, uintptr(unsafe.Pointer(&nid))); r == 0 {
 		return fmt.Errorf("tepsi simgesi eklenemedi: %w", err)
 	}

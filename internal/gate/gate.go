@@ -201,6 +201,7 @@ var (
 	procSetForeground   = user32.NewProc("SetForegroundWindow")
 	procSetFocus        = user32.NewProc("SetFocus")
 	procLoadCursor      = user32.NewProc("LoadCursorW")
+	procLoadIcon        = user32.NewProc("LoadIconW")
 	procGetModuleHandle = kernel32.NewProc("GetModuleHandleW")
 	procGetStockObject  = gdi32.NewProc("GetStockObject")
 )
@@ -317,13 +318,16 @@ func registerClass() error {
 	classOnce.Do(func() {
 		hInst, _, _ := procGetModuleHandle.Call(0)
 		cursor, _, _ := procLoadCursor.Call(0, idcArrow)
+		icon, _, _ := procLoadIcon.Call(hInst, 1)
 		wc := wndClassEx{
 			Size:       uint32(unsafe.Sizeof(wndClassEx{})),
 			WndProc:    windows.NewCallback(wndProc),
 			Instance:   windows.Handle(hInst),
+			Icon:       windows.Handle(icon),
 			Cursor:     windows.Handle(cursor),
 			Background: windows.Handle(colorWindowPlus),
 			ClassName:  utf16(gateClass),
+			IconSm:     windows.Handle(icon),
 		}
 		if r, _, err := procRegisterClassEx.Call(uintptr(unsafe.Pointer(&wc))); r == 0 {
 			classErr = fmt.Errorf("pencere sınıfı kaydedilemedi: %w", err)

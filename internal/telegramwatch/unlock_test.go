@@ -92,6 +92,39 @@ func TestScanUnlocksSendsNewUnlocksToAllChats(t *testing.T) {
 	}
 }
 
+func TestScanUnlocksLogsSuccessfulSendsOnly(t *testing.T) {
+	dir := t.TempDir()
+	base := time.Date(2026, 8, 23, 10, 0, 0, 0, time.UTC)
+	if err := store.SaveTelegramState(dir, &store.TelegramState{LastUnlockTS: &base}); err != nil {
+		t.Fatalf("SaveTelegramState: %v", err)
+	}
+	evTS := base.Add(time.Minute)
+	if err := store.Append(dir, store.Event{TS: evTS, Ev: "unlock", Who: "p1"}); err != nil {
+		t.Fatalf("Append: %v", err)
+	}
+	cfg := &config.Config{
+		People:        []config.Person{{ID: "p1", Name: "Baran"}},
+		TelegramChats: []config.TelegramChat{{ID: 1, Label: "Ebeveyn"}, {ID: 2, Label: "Baran"}},
+	}
+	fs := &fakeSender{failChat: 1}
+	now := evTS.Add(time.Minute)
+
+	if err := scanUnlocks(dir, cfg, fs, now); err != nil {
+		t.Fatalf("scanUnlocks: %v", err)
+	}
+	sent, err := store.ReadSent(dir, 10)
+	if err != nil {
+		t.Fatalf("ReadSent: %v", err)
+	}
+	if len(sent) != 1 || sent[0].ChatID != 2 || sent[0].Label != "Baran" {
+		t.Fatalf("yalnizca basarili gonderim loglanmali: %+v", sent)
+	}
+	want := "Kapı açıldı: Baran, " + evTS.Local().Format("15:04")
+	if sent[0].Text != want {
+		t.Errorf("got %q want %q", sent[0].Text, want)
+	}
+}
+
 func TestScanUnlocksOneChatFailureDoesNotBlockOthersOrBookmark(t *testing.T) {
 	dir := t.TempDir()
 	base := time.Date(2026, 8, 23, 10, 0, 0, 0, time.UTC)

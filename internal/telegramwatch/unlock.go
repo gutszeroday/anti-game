@@ -52,7 +52,10 @@ func scanUnlocks(dir string, cfg *config.Config, client sender, now time.Time) e
 		for _, chat := range cfg.TelegramChats {
 			// Gonderim hatasi yutulur: bir sohbetin engellenmesi
 			// digerlerini veya bir sonraki taramayi kilitlememeli.
-			_ = client.SendMessage(chat.ID, msg)
+			if err := client.SendMessage(chat.ID, msg); err != nil {
+				continue
+			}
+			_ = store.AppendSent(dir, store.SentNotification{TS: now, ChatID: chat.ID, Label: chat.Label, Text: msg})
 		}
 		if e.TS.After(last) {
 			last = e.TS

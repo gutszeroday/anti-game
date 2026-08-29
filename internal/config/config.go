@@ -37,9 +37,19 @@ type Person struct {
 type TelegramChat struct {
 	ID    int64  `json:"id"`
 	Label string `json:"label,omitempty"`
+	// PersonID, sohbeti onaylayan kisinin ID'sidir (kapi kodu onunla
+	// eslesti). /durum yanitini yalnizca bu kisiye ait veriyle
+	// sinirlamak icin kullanilir; Label'dan farkli olarak kisi adi
+	// degistiginde otomatik guncel kalir.
+	PersonID string `json:"person_id,omitempty"`
 	// AddedAt, sohbetin ne zaman onaylandığıdır; yalnızca bilgi
 	// amaçlıdır, davranışı etkilemez.
 	AddedAt time.Time `json:"added_at"`
+	// NotifyOnClose, izleyici kapandığında bu sohbete bildirim
+	// gönderilip gönderilmeyeceğidir. Yalnızca Telegram'daki
+	// /kapanis_bildirimi komutuyla değişir (bkz. telegramwatch/command.go);
+	// istemci arayüzünden kasıtlı olarak değiştirilemez.
+	NotifyOnClose bool `json:"notify_on_close,omitempty"`
 }
 
 type Config struct {
@@ -70,6 +80,10 @@ type Config struct {
 	// spec).
 	TelegramToken string         `json:"telegram_token,omitempty"`
 	TelegramChats []TelegramChat `json:"telegram_chats,omitempty"`
+	// CodeUnlockOff true ise kapida oyun durdurulmaz, kod hic sorulmaz;
+	// oyunlar dogrudan acilir. Sure ve olay kaydi (game_start/game_end)
+	// yine tutulur — yalnizca engelleme devre disi kalir.
+	CodeUnlockOff bool `json:"code_unlock_off,omitempty"`
 }
 
 // ValidPersonID, kisi ID'sinin dosya adinda kullanilmaya uygun olup

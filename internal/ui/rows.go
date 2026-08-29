@@ -7,6 +7,7 @@ import (
 
 	"github.com/guts/antigame/internal/config"
 	"github.com/guts/antigame/internal/people"
+	"github.com/guts/antigame/internal/store"
 )
 
 // Row, liste kontrolundeki bir satirdir. Hucreler sutun sirasindadir.
@@ -67,6 +68,20 @@ func ChatRows(chats []config.TelegramChat) []Row {
 			label = fmt.Sprintf("Sohbet %d", c.ID)
 		}
 		rows = append(rows, Row{Cells: []string{label, c.AddedAt.Local().Format("2006-01-02 15:04")}})
+	}
+	return rows
+}
+
+// SentRows, giden Telegram bildirimlerini goruntulenecek satirlara
+// cevirir. Sutunlar: Zaman, Sohbet, Mesaj.
+func SentRows(sent []store.SentNotification) []Row {
+	rows := make([]Row, 0, len(sent))
+	for _, n := range sent {
+		label := n.Label
+		if label == "" {
+			label = fmt.Sprintf("Sohbet %d", n.ChatID)
+		}
+		rows = append(rows, Row{Cells: []string{n.TS.Local().Format("2006-01-02 15:04"), label, n.Text}})
 	}
 	return rows
 }

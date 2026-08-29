@@ -99,9 +99,9 @@ func runCommandListener(ctx context.Context, dirFunc func() string) {
 			continue
 		}
 		for _, u := range updates {
-			// Yerel saat: /durum ozetinin "bugun"u kullanicinin takvim
-			// gunu olmali (bkz. dailySummary, now.Location()).
-			_ = handleUpdate(dir, cfg, ts, u, client, time.Now())
+			// Yerel saat: /durum ozetinin hafta penceresi kullanicinin
+			// takvim gunu olmali (bkz. weekSummary, now.Location()).
+			_ = handleUpdate(dir, cfg, u, client, time.Now())
 			ts.Offset = u.UpdateID + 1
 		}
 		_ = store.SaveTelegramState(dir, ts)

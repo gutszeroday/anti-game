@@ -8,8 +8,8 @@ import (
 )
 
 // TelegramState, internal/telegramwatch'in calisma zamani durumudur:
-// getUpdates offset'i, unlock tarama isareti ve bekleyen eslestirme
-// kodu. state.json'dan AYRI bir dosyada tutulur: internal/watch,
+// getUpdates offset'i ve unlock tarama isareti. state.json'dan AYRI
+// bir dosyada tutulur: internal/watch,
 // state.json'u kendi bellek ici kopyasindan (w.st) her 30 saniyede bir
 // kosulsuz geri yazar (bkz. watch.go persist()), ve bir oturum acikken
 // (tam da bir kapi acildiktan sonraki durum) o kopyayi diskten hic
@@ -28,10 +28,6 @@ type TelegramState struct {
 	// LastUnlockTS, event log taramasinin nereye kadar geldigini
 	// isaretler. Bos ise (ilk calisma) gecmis taranmaz.
 	LastUnlockTS *time.Time `json:"last_unlock_ts,omitempty"`
-	// PendingCode, "Sohbet ekle" ile uretilen tek kullanimlik
-	// eslestirme kodudur; suresi PendingExpiry'de.
-	PendingCode   string     `json:"pending_code,omitempty"`
-	PendingExpiry *time.Time `json:"pending_expiry,omitempty"`
 }
 
 const telegramStateFile = "telegram_state.json"

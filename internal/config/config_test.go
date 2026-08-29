@@ -312,7 +312,7 @@ func TestTelegramChatsRoundTrip(t *testing.T) {
 	added := time.Date(2026, 8, 23, 10, 0, 0, 0, time.UTC)
 	c := Default()
 	c.TelegramToken = "123:abc"
-	c.TelegramChats = []TelegramChat{{ID: 42, Label: "Ebeveyn", AddedAt: added}}
+	c.TelegramChats = []TelegramChat{{ID: 42, Label: "Ebeveyn", PersonID: "p1", AddedAt: added}}
 
 	if err := Save(dir, c); err != nil {
 		t.Fatalf("Save: %v", err)
@@ -325,8 +325,50 @@ func TestTelegramChatsRoundTrip(t *testing.T) {
 		t.Errorf("token korunmadi: %q", got.TelegramToken)
 	}
 	if len(got.TelegramChats) != 1 || got.TelegramChats[0].ID != 42 ||
-		got.TelegramChats[0].Label != "Ebeveyn" || !got.TelegramChats[0].AddedAt.Equal(added) {
+		got.TelegramChats[0].Label != "Ebeveyn" || got.TelegramChats[0].PersonID != "p1" ||
+		!got.TelegramChats[0].AddedAt.Equal(added) {
 		t.Errorf("sohbet listesi korunmadi: %+v", got.TelegramChats)
+	}
+}
+
+func TestTelegramChatNotifyOnCloseRoundTrip(t *testing.T) {
+	dir := t.TempDir()
+	c := Default()
+	c.TelegramToken = "123:abc"
+	c.TelegramChats = []TelegramChat{{ID: 42, Label: "Ebeveyn", PersonID: "p1", NotifyOnClose: true}}
+
+	if err := Save(dir, c); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+	got, err := Load(dir)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if len(got.TelegramChats) != 1 || !got.TelegramChats[0].NotifyOnClose {
+		t.Errorf("NotifyOnClose korunmadi: %+v", got.TelegramChats)
+	}
+}
+
+func TestCodeUnlockOffRoundTrip(t *testing.T) {
+	dir := t.TempDir()
+	c := Default()
+	c.CodeUnlockOff = true
+
+	if err := Save(dir, c); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+	got, err := Load(dir)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if !got.CodeUnlockOff {
+		t.Error("CodeUnlockOff korunmadi")
+	}
+}
+
+func TestCodeUnlockOffDefaultsFalse(t *testing.T) {
+	if Default().CodeUnlockOff {
+		t.Error("varsayilanda kod ile acma kapali olmamali")
 	}
 }
 

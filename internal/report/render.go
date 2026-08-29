@@ -147,7 +147,7 @@ code{background:#1c2029;padding:.15rem .4rem;border-radius:4px}
 		weekLabels = append(weekLabels, w.Start.Format("02.01"))
 		weekValues = append(weekValues, w.DurS)
 	}
-	fmt.Fprintf(&b, `<section><h2>Son 4 hafta</h2>%s</section>`, bars(weekLabels, weekValues, 720, 160))
+	fmt.Fprintf(&b, `<section><h2>Kurulumdan bu yana, haftalık</h2>%s</section>`, bars(weekLabels, weekValues, 720, 160))
 
 	b.WriteString(`<section><h2>İzleyicinin kapalı olduğu aralıklar</h2>`)
 	if len(s.Gaps) == 0 {
@@ -190,8 +190,15 @@ func Run(dir string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	s := Aggregate(ev, cfg, now, time.Local)
+	weeklyTotals, err := WeeklyTotals(dir, cfg, s.From, time.Local)
+	if err != nil {
+		return "", err
+	}
+	s.Weeks = weeklyTotals
+
 	out := filepath.Join(os.TempDir(), "antigame-report.html")
-	if err := os.WriteFile(out, Render(Aggregate(ev, cfg, now, time.Local)), 0o600); err != nil {
+	if err := os.WriteFile(out, Render(s), 0o600); err != nil {
 		return "", err
 	}
 	if err := open(out).Start(); err != nil {

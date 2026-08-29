@@ -4,14 +4,15 @@ package ui
 
 import (
 	"strings"
-	"time"
 
 	"github.com/guts/antigame/internal/config"
 	"github.com/guts/antigame/internal/store"
 )
 
-// pairingCodeTTL, uretilen eslestirme kodunun gecerlilik suresidir.
-const pairingCodeTTL = 10 * time.Minute
+// sentListLimit, "Gönderilenler" listesinde gösterilecek en yeni
+// bildirim sayısıdır. Pencere kaydırma sunmuyor; makul bir üst sınır
+// yeterli.
+const sentListLimit = 50
 
 const notificationsHelpText = `Telegram'dan bildirim almak için önce kendi botunuzu oluşturun:
 
@@ -19,13 +20,13 @@ const notificationsHelpText = `Telegram'dan bildirim almak için önce kendi bot
   2. /newbot yazın, botunuza bir isim verin.
   3. BotFather'ın verdiği token'ı aşağıya yapıştırıp Kaydet'e basın.
 
-Token girilince bildirimler otomatik açılır. Sonra "Sohbet ekle" ile
-kendi sohbetinizi eşleştirebilirsiniz.`
+Token girilince bildirimler otomatik açılır. Sonra her kişi kendi kapı
+kodunu (6 haneli) bota mesaj olarak gönderip kendi adıyla eşleşebilir.`
 
 // showNotifications, Telegram bot token'ini ve onayli sohbetleri
 // yonetme diyalogunu acar.
 func showNotifications(parent uintptr, dir string) {
-	m, err := newModal(parent, "Bildirimler — Telegram", 540, 440)
+	m, err := newModal(parent, "Bildirimler — Telegram", 540, 680)
 	if err != nil {
 		warn(parent, "antigame", "Pencere açılamadı: "+err.Error())
 		return
@@ -37,17 +38,19 @@ func showNotifications(parent uintptr, dir string) {
 
 	help := m.label(notificationsHelpText, Rect{12, 42, 516, 92})
 
-	list := m.list(Rect{12, 140, 516, 156},
+	list := m.list(Rect{12, 140, 516, 140},
 		[]string{"Sohbet", "Eklenme"}, []int32{300, 200})
 
-	status := m.label("", Rect{12, 300, 516, 36})
+	m.label("Gönderilenler:", Rect{12, 286, 200, 18})
+	sentList := m.list(Rect{12, 306, 516, 220},
+		[]string{"Zaman", "Sohbet", "Mesaj"}, []int32{130, 120, 250})
 
-	_, addID := m.button("Sohbet ekle", Rect{12, 344, 110, 28}, variantSecondary, false)
-	_, removeID := m.button("Kaldır", Rect{130, 344, 90, 28}, variantDanger, false)
-	_, closeID := m.button("Kapat", Rect{438, 344, 90, 28}, variantSecondary, true)
+	status := m.label("", Rect{12, 532, 516, 36})
+
+	_, removeID := m.button("Kaldır", Rect{12, 576, 90, 28}, variantDanger, false)
+	_, closeID := m.button("Kapat", Rect{438, 576, 90, 28}, variantSecondary, true)
 
 	var chats []config.TelegramChat
-	var tokenSet bool
 
 	reload := func() {
 		c, err := config.Load(dir)
@@ -56,14 +59,21 @@ func showNotifications(parent uintptr, dir string) {
 			return
 		}
 		chats = c.TelegramChats
-		tokenSet = c.TelegramToken != ""
+		tokenSet := c.TelegramToken != ""
 		setText(tokenBox, c.TelegramToken)
 		if tokenSet {
-			setText(help, "Bot bağlandı. Aşağıdan sohbet ekleyip kaldırabilirsiniz.")
+			setText(help, "Bot bağlandı. Kişiler kapı kodlarını bota gönderip eşleştikçe listede görünür.")
 		} else {
 			setText(help, notificationsHelpText)
 		}
 		lvSetRows(list, ChatRows(chats))
+
+		sent, err := store.ReadSent(dir, sentListLimit)
+		if err != nil {
+			setText(status, "Gönderilen bildirimler okunamadı: "+err.Error())
+			return
+		}
+		lvSetRows(sentList, SentRows(sent))
 	}
 
 	selected := func() (config.TelegramChat, bool) {
@@ -94,31 +104,6 @@ func showNotifications(parent uintptr, dir string) {
 			setText(status, "Token kaydedildi.")
 			reload()
 
-		case addID:
-			if !tokenSet {
-				setText(status, "Önce bot token girip kaydedin.")
-				return
-			}
-			code, err := newPairingCode()
-			if err != nil {
-				setText(status, "Kod üretilemedi: "+err.Error())
-				return
-			}
-			ts, err := store.LoadTelegramState(dir)
-			if err != nil {
-				setText(status, "Durum okunamadı: "+err.Error())
-				return
-			}
-			expiry := time.Now().Add(pairingCodeTTL)
-			ts.PendingCode = code
-			ts.PendingExpiry = &expiry
-			if err := store.SaveTelegramState(dir, ts); err != nil {
-				setText(status, "Durum yazılamadı: "+err.Error())
-				return
-			}
-			showPairingCode(m.hwnd, code)
-			setText(status, "Kod onaylandıktan sonra listeyi görmek için pencereyi kapatıp tekrar açın.")
-
 		case removeID:
 			chat, ok := selected()
 			if !ok {
@@ -146,37 +131,5 @@ func showNotifications(parent uintptr, dir string) {
 	}
 
 	reload()
-	m.run(parent)
-}
-
-// showPairingCode, uretilen eslestirme kodunu ve bota nasil
-// gonderilecegini gosterir. Onay watcher'da arka planda gerceklesir;
-// bu diyalog onu beklemez, kullanici kapatabilir.
-func showPairingCode(parent uintptr, code string) {
-	m, err := newModal(parent, "Sohbet ekle", 380, 200)
-	if err != nil {
-		warn(parent, "antigame", "Pencere açılamadı: "+err.Error())
-		return
-	}
-	m.label("Bu kodu botunuza mesaj olarak gönderin:", Rect{12, 12, 352, 20})
-	m.label(code, Rect{12, 40, 200, 32})
-	m.label("Kod 10 dakika geçerlidir.", Rect{12, 80, 352, 20})
-	status := m.label("", Rect{12, 112, 352, 20})
-
-	_, copyID := m.button("Kopyala", Rect{12, 148, 90, 28}, variantSecondary, false)
-	_, closeID := m.button("Kapat", Rect{272, 148, 90, 28}, variantPrimary, true)
-
-	m.onCmd = func(id int) {
-		switch id {
-		case copyID:
-			if err := copySecret(m.hwnd, code); err != nil {
-				setText(status, "Kopyalanamadı: "+err.Error())
-				return
-			}
-			setText(status, "Kod panoya kopyalandı.")
-		case closeID, idCancel, idOK:
-			m.close()
-		}
-	}
 	m.run(parent)
 }

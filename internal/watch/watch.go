@@ -279,7 +279,7 @@ func (w *Watcher) Step(now time.Time) error {
 	// kullaniciyi kod girecek yeri olmadan tamamen kilitlerdi; bu yuzden
 	// kapi devre disi kaliyor, sure tutulmaya devam ediyor ve durum bir
 	// kez gunluge yaziliyor.
-	gating := w.o.SecretReady == nil || w.o.SecretReady()
+	gating := (w.o.SecretReady == nil || w.o.SecretReady()) && !w.o.Cfg.CodeUnlockOff
 	if !gating && !w.warnedNoSecret {
 		w.warnedNoSecret = true
 		if err := store.Append(w.dir(), store.Event{TS: now, Ev: "gate_disabled"}); err != nil {

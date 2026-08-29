@@ -18,6 +18,59 @@ func cfg() *config.Config {
 	return &config.Config{Gated: []config.Game{{Name: "Valorant", Exe: "VALORANT.exe"}}}
 }
 
+func TestWeeklyTotalsListsEachWeekIncludingThisOne(t *testing.T) {
+	dir := t.TempDir()
+	c := cfg()
+	appendGame := func(ts time.Time, dur int) {
+		if err := store.Append(dir, store.Event{TS: ts, Ev: "game_end", Exe: "VALORANT.exe", DurS: dur}); err != nil {
+			t.Fatalf("Append: %v", err)
+		}
+	}
+
+	earliest := at(10, 9)
+	appendGame(earliest, 3600)
+	firstWeek := weekStart(earliest, loc)
+	// Oturum bitisi degil basladigi an haftayi belirler (bkz. WeeklyTotals
+	// yorumu): +3s baslayip 2s suren oturum +1s'te basliyor, yine 1.
+	// haftada kaliyor.
+	appendGame(firstWeek.AddDate(0, 0, 7).Add(3*time.Hour), 7200)
+	// firstWeek+14 gunluk hafta kasten bos: bos haftalar da listede
+	// yer almali, yoksa grafik yanlis araliklara kayardi.
+	thisWeekStart := firstWeek.AddDate(0, 0, 21)
+	appendGame(thisWeekStart.Add(time.Hour), 1800)
+
+	got, err := WeeklyTotals(dir, c, thisWeekStart, loc)
+	if err != nil {
+		t.Fatalf("WeeklyTotals: %v", err)
+	}
+	want := []int{3600, 7200, 0, 1800}
+	if len(got) != len(want) {
+		t.Fatalf("got %d hafta, want %d: %+v", len(got), len(want), got)
+	}
+	for i, w := range want {
+		if got[i].DurS != w {
+			t.Errorf("hafta %d: got %d, want %d", i, got[i].DurS, w)
+		}
+	}
+	if !got[0].Start.Equal(firstWeek) {
+		t.Errorf("ilk hafta baslangici yanlis: %v", got[0].Start)
+	}
+	if !got[len(got)-1].Start.Equal(thisWeekStart) {
+		t.Errorf("son hafta bu haftanin baslangici olmali: %v", got[len(got)-1].Start)
+	}
+}
+
+func TestWeeklyTotalsNoEventsReturnsEmpty(t *testing.T) {
+	dir := t.TempDir()
+	got, err := WeeklyTotals(dir, cfg(), weekStart(at(20, 12), loc), loc)
+	if err != nil {
+		t.Fatalf("WeeklyTotals: %v", err)
+	}
+	if len(got) != 0 {
+		t.Fatalf("olaysiz dizinde bos liste beklenirdi: %+v", got)
+	}
+}
+
 func TestTotalSumsGameDurations(t *testing.T) {
 	ev := []store.Event{
 		{TS: at(3, 20), Ev: "game_end", Exe: "VALORANT.exe", Name: "Valorant", DurS: 3600, ActiveS: 3000},

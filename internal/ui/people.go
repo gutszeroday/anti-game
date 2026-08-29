@@ -61,12 +61,12 @@ func showPeople(parent uintptr, dir string) {
 			if !ok {
 				return
 			}
-			secret, counter, ok := showPair(m.hwnd, name)
+			secret, ok := showAssignKey(m.hwnd, name)
 			if !ok {
-				setText(status, "Eşleştirme tamamlanmadı, kişi eklenmedi.")
+				setText(status, "Anahtar oluşturulmadı, kişi eklenmedi.")
 				return
 			}
-			if _, err := people.Add(dir, name, hint, secret, counter); err != nil {
+			if _, err := people.Add(dir, name, hint, secret, 0); err != nil {
 				setText(status, err.Error())
 				return
 			}

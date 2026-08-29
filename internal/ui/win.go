@@ -225,8 +225,7 @@ const (
 	mbYesNo    = 0x00000004
 	idYes      = 6
 
-	idiApplication = 32512
-	idcArrow       = 32512
+	idcArrow = 32512
 
 	colorBtnFace = 15
 
@@ -408,7 +407,7 @@ type windowClass struct {
 func (c *windowClass) register() error {
 	c.once.Do(func() {
 		cursor, _, _ := procLoadCursor.Call(0, idcArrow)
-		icon, _, _ := procLoadIcon.Call(0, idiApplication)
+		icon, _, _ := procLoadIcon.Call(instance(), 1)
 		brush, _, _ := procGetSysColorBrush.Call(colorBtnFace)
 		wc := wndClassEx{
 			Style:      0,

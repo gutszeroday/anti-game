@@ -1,0 +1,56 @@
+antigame — kurulum gerektirmez
+==============================
+
+Bu klasörün tamamını bilgisayara kopyalayın, sonra BASLAT.cmd dosyasına
+çift tıklayın. Kurulum, .NET, çalışma zamanı kütüphanesi gerekmez.
+
+
+Klasörde ne var
+---------------
+
+  BASLAT.cmd          Bunu çalıştırın. Bilgisayarınıza uyanı seçer.
+  antigame-x64.exe    Intel/AMD 64-bit — çoğu bilgisayar
+  antigame-arm64.exe  ARM64 — Snapdragon, Surface Pro X
+  antigame-x86.exe    32-bit Windows — eski makineler
+
+Doğrudan exe'ye çift tıklamak da olur; ama yanlış olanı seçerseniz
+Windows "This app can't run on your PC" der. BASLAT.cmd bu seçimi
+sizin yerinize yapar.
+
+
+"Windows bilgisayarınızı korudu" uyarısı çıkarsa
+------------------------------------------------
+
+Program imzalı olmadığı için, başka bir bilgisayardan kopyalandığında
+Windows SmartScreen uyarı verir. Çalıştırmak için:
+
+  "Ek bilgi" → "Yine de çalıştır"
+
+Uyarı hiç çıkmasın isterseniz, kopyaladıktan sonra klasöre sağ tıklayıp
+Özellikler'den "Engellemeyi kaldır" kutusunu işaretleyin. Ya da
+PowerShell'de:
+
+  Get-ChildItem -Recurse | Unblock-File
+
+
+Verileriniz nereye yazılıyor
+----------------------------
+
+  %LOCALAPPDATA%\antigame
+
+Bu klasör exe'nin yanında değil, kullanıcı profilinizde durur. Programı
+başka bir yere taşımak verilerinizi bozmaz.
+
+ÖNEMLİ: Veri klasörünü başka bir bilgisayara kopyalamayın. MFA
+anahtarları Windows DPAPI ile şifrelenir; anahtarlar o kullanıcıya ve o
+makineye bağlıdır, başka makinede çözülemez. Yeni bilgisayarda kurulum
+sihirbazını baştan çalıştırın.
+
+
+İlk çalıştırma
+--------------
+
+1. BASLAT.cmd — arayüz açılır.
+2. Kurulum (MFA eşleştirme) — telefonunuza QR okutup kod üretin.
+3. Oyun listesini kontrol edin (Riot/League/Valorant hazır gelir).
+4. "Başlangıca ekle" — oturum açılışında izleyici kendiliğinden başlar.

@@ -9,6 +9,7 @@ import (
 
 	"github.com/guts/antigame/internal/config"
 	"github.com/guts/antigame/internal/people"
+	"github.com/guts/antigame/internal/store"
 )
 
 func TestGameRowsSeparatesLaunchersFromGames(t *testing.T) {
@@ -98,6 +99,33 @@ func TestChatRowsFallsBackToChatID(t *testing.T) {
 
 func TestChatRowsEmptyListIsEmptyNotNil(t *testing.T) {
 	if rows := ChatRows(nil); rows == nil {
+		t.Error("bos liste nil degil bos dilim olmali")
+	}
+}
+
+func TestSentRowsFormatsTimeLabelAndText(t *testing.T) {
+	ts := time.Date(2026, 8, 24, 22, 15, 0, 0, time.UTC)
+	rows := SentRows([]store.SentNotification{{TS: ts, ChatID: 1, Label: "Ebeveyn", Text: "İzleyici kapatıldı: 22:15"}})
+	if rows[0].Cells[0] != ts.Local().Format("2006-01-02 15:04") {
+		t.Errorf("zaman bicimi beklenmedik: %q", rows[0].Cells[0])
+	}
+	if rows[0].Cells[1] != "Ebeveyn" {
+		t.Errorf("etiket kullanilmadi: %q", rows[0].Cells[1])
+	}
+	if rows[0].Cells[2] != "İzleyici kapatıldı: 22:15" {
+		t.Errorf("mesaj korunmadi: %q", rows[0].Cells[2])
+	}
+}
+
+func TestSentRowsFallsBackToChatID(t *testing.T) {
+	rows := SentRows([]store.SentNotification{{ChatID: 7, Text: "m"}})
+	if rows[0].Cells[1] != "Sohbet 7" {
+		t.Errorf("beklenen varsayilan etiket degil: %q", rows[0].Cells[1])
+	}
+}
+
+func TestSentRowsEmptyListIsEmptyNotNil(t *testing.T) {
+	if rows := SentRows(nil); rows == nil {
 		t.Error("bos liste nil degil bos dilim olmali")
 	}
 }
